@@ -1,22 +1,3 @@
---[[
-	CITRA LOADER
-
-	A catalogue, not a wizard. One screen: the games, their art, and a button
-	each. The terms are shown once and remembered.
-
-	Deliberately standalone -- no UI library. A loader is the first thing a user
-	hits, so it has to draw itself before anything else is fetched, and it has to
-	still explain itself when the network is down. Pulling a 240KB UI library
-	first would make the loader's own failure mode depend on the fetch it exists
-	to perform.
-
-	Game art comes from rbxthumb://type=GameIcon&id=<UNIVERSE_ID>. That is the
-	universe id, not the place id -- place ids return nothing. Verified live.
-	MarketplaceService:GetProductInfo is not used as a fallback: it returned
-	nothing at all for one of these games, so a card that depended on it would
-	simply be blank.
---]]
-
 if getgenv().CitraLoader and getgenv().CitraLoader.Destroy then
 	pcall(getgenv().CitraLoader.Destroy)
 end
@@ -29,9 +10,6 @@ local ACCEPT_FILE = FOLDER .. "/terms.txt"
 
 local SCRIPT_REPO = "https://raw.githubusercontent.com/gilgameshfate59/ohbfoosk8tid/main/"
 local MANIFEST_URL = SCRIPT_REPO .. "scripts.json"
-
--- ============================================================ THEME
--- The single source of truth for both the loader and CitraUI. Keep them equal.
 
 local C = {
 	Background = Color3.fromRGB(10, 10, 12),
@@ -48,8 +26,6 @@ local C = {
 	Bad        = Color3.fromRGB(229, 72, 77),
 }
 
--- ============================================================ SERVICES
-
 local cloneref = cloneref or function(o) return o end
 
 local Players = cloneref(game:GetService("Players"))
@@ -64,14 +40,8 @@ local IsMobile = UserInputService.TouchEnabled and not UserInputService.MouseEna
 
 local hasFiles = (isfile and writefile and isfolder and makefolder) and true or false
 
--- One face throughout. Fredoka One is round and heavy enough to carry the
--- chunky look at title size, and using it everywhere keeps the loader and the
--- hub visually identical rather than "nearly the same".
 local FONT = Enum.Font.FredokaOne
 
--- Touch needs a bigger target than a mouse does. Everything tappable is sized
--- through this so the whole loader scales together rather than one control at a
--- time being remembered.
 local TAP = IsMobile and 44 or 32
 local setclip = setclipboard or (syn and syn.setclipboard)
 
@@ -88,8 +58,6 @@ local function GetHui()
 	end
 	return cloneref(game:GetService("CoreGui"))
 end
-
--- ============================================================ PRIMITIVES
 
 local function New(class, props, parent)
 	local o = Instance.new(class)
@@ -137,8 +105,6 @@ local function Tween(o, props, time, style)
 	return tw
 end
 
--- Buttons are a frame plus an invisible hit area, so the visible part can be
--- styled freely without fighting TextButton's own states.
 local function Button(parent, props)
 	local frame = New("Frame", {
 		BackgroundColor3 = props.Fill or C.Element,
@@ -201,8 +167,6 @@ local function Button(parent, props)
 	return api
 end
 
--- ============================================================ CONFIG
-
 local function EnsureFolder()
 	if not hasFiles then return end
 	if not isfolder(FOLDER) then Run(makefolder, FOLDER) end
@@ -220,12 +184,6 @@ local function AcceptTerms()
 	Run(writefile, ACCEPT_FILE, tostring(os.time()))
 end
 
--- ============================================================ CATALOGUE
-
--- Offline fallback only -- scripts.json replaces this whole list on every
--- successful fetch. Keep it equal to the manifest: when GitHub is down this is
--- what users see, and listing a script the repo does not serve gives them a
--- card that fails at the last step instead of not being offered at all.
 local CATALOGUE = {
 	{
 		Name = "Redliner",
@@ -271,8 +229,6 @@ local CATALOGUE = {
 	},
 }
 
--- The manifest is written by hand, so accept whichever spelling turns up rather
--- than silently dropping an entry over a capital letter.
 local function Normalise(raw)
 	if type(raw) ~= "table" then return nil end
 
@@ -322,8 +278,6 @@ ApplyCatalogue(CATALOGUE)
 local function EntryForPlace()
 	local pid, uid = game.PlaceId, game.GameId
 
-	-- Universe first: it covers every place in a game, so a new lobby or a
-	-- second map does not need adding by hand.
 	for _, e in ipairs(CATALOGUE) do
 		for _, id in ipairs(e.Universes or {}) do
 			if id == uid then return e end
@@ -338,8 +292,6 @@ local function EntryForPlace()
 
 	return nil
 end
-
--- ============================================================ SCREEN
 
 local gui = New("ScreenGui", {
 	Name = HttpService:GenerateGUID(false),
@@ -362,9 +314,6 @@ local Backdrop = New("TextButton", {
 	ZIndex = 1,
 }, gui)
 
--- Card size is clamped to the viewport, and the body scrolls inside it. The
--- header and footer are pinned so nothing can be pushed off screen -- that is
--- exactly how the old loader's Next button became unreachable on phones.
 local MAX_W, MAX_H = 760, 560
 local HEADER_H, FOOTER_H = 58, 52
 
@@ -385,8 +334,6 @@ local Card = New("Frame", {
 }, gui)
 Corner(14, Card)
 Stroke(C.Line, 1, Card)
-
--- ---------------------------------------------------------------- header
 
 local Header = New("Frame", {
 	BackgroundColor3 = C.Section,
@@ -457,8 +404,6 @@ New("Frame", {
 	ZIndex = 4,
 }, Card)
 
--- ---------------------------------------------------------------- footer
-
 local Footer = New("Frame", {
 	AnchorPoint = Vector2.new(0, 1),
 	Position = UDim2.new(0, 0, 1, 0),
@@ -508,8 +453,6 @@ local TermsBtn = Button(Footer, {
 	Z = 4,
 })
 
--- ---------------------------------------------------------------- body
-
 local Body = New("Frame", {
 	Position = UDim2.fromOffset(0, HEADER_H + 1),
 	Size = UDim2.new(1, 0, 1, -(HEADER_H + FOOTER_H + 1)),
@@ -523,8 +466,7 @@ local function Resize()
 	local w, h = Metrics()
 	Card.Size = UDim2.fromOffset(w, h)
 	Body.Size = UDim2.new(1, 0, 1, -(HEADER_H + FOOTER_H + 1))
-	-- On a narrow screen the footer's two buttons and the invite will not fit
-	-- side by side, so the invite text steps aside rather than overlapping.
+
 	FooterText.Visible = w > 520
 end
 
@@ -533,8 +475,6 @@ Camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
 	task.wait()
 	Resize()
 end)
-
--- ============================================================ SCREENS
 
 local Screens = {}
 
@@ -546,8 +486,6 @@ local function Show(name, ...)
 	ClearBody()
 	Screens[name](...)
 end
-
--- ---------------------------------------------------------------- terms
 
 local TERMS = [[CITRA — TERMS OF SERVICE
 
@@ -631,7 +569,6 @@ function Screens.Terms(readOnly)
 		return
 	end
 
-	-- agree row
 	local row = New("Frame", {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, pad, 1, -(btnH + 14)),
@@ -711,15 +648,12 @@ function Screens.Terms(readOnly)
 	end
 end
 
--- ---------------------------------------------------------------- catalogue
-
 local Confirm
 
 function Screens.Catalogue()
 	local pad = 14
 	local here = EntryForPlace()
 
-	-- current game first, then everything else in catalogue order
 	local order = {}
 	if here then order[#order + 1] = here end
 	for _, e in ipairs(CATALOGUE) do
@@ -745,8 +679,6 @@ function Screens.Catalogue()
 		CellSize = UDim2.fromOffset(200, 214 + (TAP - 32)),
 	}, scroll)
 
-	-- Reflow: as many whole columns as fit, never fewer than one, so a phone
-	-- gets a single wide column instead of a card cut in half.
 	local function Reflow()
 		local avail = scroll.AbsoluteSize.X
 		if avail <= 0 then return end
@@ -787,7 +719,6 @@ function Screens.Catalogue()
 
 		if isHere then Stroke(C.Accent, 1.5, card) end
 
-		-- art
 		local art = New("ImageLabel", {
 			Position = UDim2.fromOffset(10, 10),
 			Size = UDim2.new(1, -20, 0, 96),
@@ -801,8 +732,6 @@ function Screens.Catalogue()
 		}, card)
 		Corner(8, art)
 
-		-- A placeholder sits underneath and is simply covered when the real art
-		-- arrives, so a missing or slow icon still looks deliberate.
 		local ph = Text(art, {
 			Text = string.sub(entry.Name, 1, 1),
 			Size = 30,
@@ -886,8 +815,6 @@ function Screens.Catalogue()
 			Z = 6,
 		})
 
-		-- A card with no url cannot load; say why on the button instead of
-		-- leaving something that looks clickable and does nothing.
 		if not entry.Url or entry.Url == "" or entry.Url:sub(-1) == "/" then
 			load:SetText("No script yet")
 			load:SetEnabled(false)
@@ -899,8 +826,6 @@ function Screens.Catalogue()
 		end
 	end
 end
-
--- ---------------------------------------------------------------- confirm
 
 local ModalLayer
 
@@ -1012,8 +937,6 @@ function Confirm(entry, sourceButton)
 		task.spawn(function()
 			local ok, body = pcall(game.HttpGet, game, entry.Url)
 
-			-- Every failure below is reported in the panel. A loader that goes
-			-- quiet is worse than one that says the fetch failed.
 			if not ok or type(body) ~= "string" or body == "" then
 				note.Text = "Could not download the script. GitHub may be down or rate limiting you -- try again in a minute."
 				note.TextColor3 = C.Bad
@@ -1061,8 +984,6 @@ function Confirm(entry, sourceButton)
 	end)
 end
 
--- ============================================================ WIRING
-
 local function Destroy()
 	Tween(Backdrop, { BackgroundTransparency = 1 }, 0.16)
 	Tween(Card, { Size = UDim2.fromOffset(Card.AbsoluteSize.X, Card.AbsoluteSize.Y) }, 0.16)
@@ -1085,8 +1006,6 @@ TermsBtn:OnClick(function() Show("Terms", true) end)
 
 getgenv().CitraLoader = { Destroy = Destroy, Show = Show }
 
--- ---------------------------------------------------------------- manifest
-
 local function FetchManifest()
 	local ok, body = pcall(game.HttpGet, game, MANIFEST_URL)
 	if not ok or type(body) ~= "string" or body == "" then
@@ -1107,13 +1026,10 @@ local function FetchManifest()
 		HeaderNote.Text = tostring(hub.status or hub.STATUS or "")
 	end
 
-	-- only redraw if the catalogue is what is on screen
 	if not TermsAccepted() then return end
 	if ModalLayer then return end
 	Show("Catalogue")
 end
-
--- ---------------------------------------------------------------- boot
 
 Backdrop.BackgroundTransparency = 1
 Card.Size = UDim2.fromOffset(select(1, Metrics()), select(2, Metrics()))

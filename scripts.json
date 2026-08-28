@@ -1,0 +1,51 @@
+{
+  "hub": {
+    "status": "Working / Undetected",
+    "version": "v1.0.0",
+    "updated": "28/08/26"
+  },
+  "scripts": [
+    {
+      "name": "Redliner",
+      "file": "RLINER.lua",
+      "universe": 7265339759,
+      "places": [94987506187454],
+      "status": "Untested"
+    },
+    {
+      "name": "QuickDraw: Legacy",
+      "file": "QDL_Aim_Citra.lua",
+      "universe": 5371687033,
+      "places": [15561786880],
+      "status": "Untested"
+    },
+    {
+      "name": "Practical Basketball",
+      "file": "PRACTICALBASKETBALL.lua",
+      "universe": 7529591378,
+      "places": [85576197307056],
+      "status": "Untested"
+    },
+    {
+      "name": "Jujutsu: Zero",
+      "file": "JJZERO.lua",
+      "universe": 6760085372,
+      "places": [128451689942376],
+      "status": "Untested"
+    },
+    {
+      "name": "Dueling Grounds",
+      "file": "DUELINGGROUNDS.lua",
+      "universe": 9051406594,
+      "places": [94217045453265],
+      "status": "Untested"
+    },
+    {
+      "name": "Azure Latch",
+      "file": "AZURELATCH.lua",
+      "universe": 6945584306,
+      "places": [94647229517154],
+      "status": "Untested"
+    }
+  ]
+}

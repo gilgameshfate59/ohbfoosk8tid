@@ -10,42 +10,42 @@
       "file": "RLINER.lua",
       "universe": 7265339759,
       "places": [94987506187454],
-      "status": "Untested"
+      "status": "Working"
     },
     {
       "name": "QuickDraw: Legacy",
       "file": "QDL_Aim_Citra.lua",
       "universe": 5371687033,
       "places": [15561786880],
-      "status": "Untested"
+      "status": "Working"
     },
     {
       "name": "Practical Basketball",
       "file": "PRACTICALBASKETBALL.lua",
       "universe": 7529591378,
       "places": [85576197307056],
-      "status": "Untested"
+      "status": "Working"
     },
     {
       "name": "Jujutsu: Zero",
       "file": "JJZERO.lua",
       "universe": 6760085372,
       "places": [128451689942376],
-      "status": "Untested"
+      "status": "Working"
     },
     {
       "name": "Dueling Grounds",
       "file": "DUELINGGROUNDS.lua",
       "universe": 9051406594,
       "places": [94217045453265],
-      "status": "Untested"
+      "status": "Working"
     },
     {
       "name": "Azure Latch",
       "file": "AZURELATCH.lua",
       "universe": 6945584306,
       "places": [94647229517154],
-      "status": "Untested"
+      "status": "Working"
     }
   ]
 }

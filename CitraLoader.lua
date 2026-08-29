@@ -319,8 +319,9 @@ local HEADER_H, FOOTER_H = 58, 52
 
 local function Metrics()
 	local vp = Camera.ViewportSize
-	local margin = vp.Y < 500 and 16 or 40
-	return math.min(MAX_W, vp.X - margin), math.min(MAX_H, vp.Y - margin)
+	local w = math.min(MAX_W, math.floor(vp.X * 0.88))
+	local h = math.min(MAX_H, math.floor(vp.Y * 0.80))
+	return math.max(300, w), math.max(260, h)
 end
 
 local Card = New("Frame", {
@@ -487,56 +488,82 @@ local function Show(name, ...)
 	Screens[name](...)
 end
 
-local TERMS = [[CITRA — TERMS OF SERVICE
+local TERMS = [[CITRA - TERMS OF SERVICE
 
-1 • PERSONAL USE
-Citra is for your own use. Do not share, sell or transfer access.
+By executing Citra scripts, purchasing Citra products or participating in the
+Citra Hub Discord, you agree to these Terms of Service.
 
-2 • NO GUARANTEE
-Roblox and game updates break things. Citra does not promise that any script
-keeps working, and features may change or be withdrawn.
+1 - LICENSE & ACCESS
+Citra products are licensed for personal use only. Keys, licenses, and access
+may not be shared, sold, transferred, or used by unauthorized users.
 
-3 • YOUR ACCOUNT, YOUR RISK
+2 - YOUR ACCOUNT, YOUR RISK
 Using any executor can get a Roblox account moderated or banned. You accept that
 risk yourself. Do not use Citra on an account you are not prepared to lose.
 
-4 • NO REDISTRIBUTION
-Do not leak, repost or rehost Citra scripts.
+3 - REFUNDS
+Refunds may be requested within 24 hours of purchase, provided the purchased
+key/license has not been redeemed, activated, or used.
 
-5 • CONDUCT
-Do not use Citra to harass other players or to disrupt games for people who are
-not part of it.
+Once a key/license has been redeemed or used, the purchase is non-refundable,
+except where required by applicable law.
 
-6 • CHANGES
-These terms may be updated. Continued use after a change means you accept it.
+Please contact Citra support before opening a payment dispute or chargeback.
+
+4 - SECURITY & ABUSE
+Attempting to bypass, exploit, or interfere with Citra's licensing or security
+systems is prohibited.
+
+5 - SERVICE & UPDATES
+Citra does not guarantee uninterrupted or permanent functionality. Roblox and
+other third-party updates may affect products.
+
+Citra may update, modify, suspend, replace, or discontinue products or features
+when necessary.
+
+6 - COMMUNITY & ENFORCEMENT
+Respect members and staff. Harassment, threats, NSFW content, scams, malicious
+links/files, impersonation, excessive spam, unauthorized advertising, and
+intentional server disruption are prohibited.
+
+Staff may warn, restrict, mute, remove, or terminate users who violate these
+terms.
 
 Loading a script means you agree to all of the above.]]
 
 function Screens.Terms(readOnly)
-	local pad = 16
+
+	local cardH = select(2, Metrics())
+	local compact = cardH < 420
+
+	local pad = compact and 12 or 16
+	local titleH = compact and 34 or 42
+	local rowH = readOnly and 0 or (compact and 34 or 40)
+	local btnH = compact and 32 or 36
+	local gap = compact and 12 or 20
 
 	Text(Body, {
 		Text = readOnly and "Terms of Service" or "Before you continue",
-		Size = 17,
+		Size = compact and 15 or 17,
 		Bold = true,
-		Pos = UDim2.fromOffset(pad, 12),
+		Pos = UDim2.fromOffset(pad, compact and 8 or 12),
 		Box = UDim2.new(1, -pad * 2, 0, 22),
 		Z = 4,
 	})
 
-	local rowH = readOnly and 0 or 40
-	local btnH = 36
-
 	local scroll = New("ScrollingFrame", {
-		Position = UDim2.fromOffset(pad, 42),
-		Size = UDim2.new(1, -pad * 2, 1, -(42 + rowH + btnH + 20)),
+		Position = UDim2.fromOffset(pad, titleH),
+		Size = UDim2.new(1, -pad * 2, 1, -(titleH + rowH + btnH + gap)),
 		BackgroundColor3 = C.Section,
 		BorderSizePixel = 0,
 		CanvasSize = UDim2.new(),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollBarThickness = 3,
+		ScrollBarThickness = IsMobile and 6 or 3,
 		ScrollBarImageColor3 = C.DimText,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
+		ScrollingEnabled = true,
+
+		Active = true,
+		ElasticBehavior = Enum.ElasticBehavior.Always,
 		ZIndex = 4,
 	}, Body)
 	Corner(8, scroll)
@@ -546,14 +573,23 @@ function Screens.Terms(readOnly)
 		PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
 	}, scroll)
 
-	Text(scroll, {
+	local body = Text(scroll, {
 		Text = TERMS,
 		Size = 13,
 		Color = C.DimText,
 		Wrap = true,
 		Box = UDim2.new(1, 0, 0, 0),
 		Z = 5,
-	}).AutomaticSize = Enum.AutomaticSize.Y
+	})
+	body.AutomaticSize = Enum.AutomaticSize.Y
+
+	local function FitCanvas()
+		scroll.CanvasSize = UDim2.fromOffset(0, body.AbsoluteSize.Y + 24)
+	end
+
+	body:GetPropertyChangedSignal("AbsoluteSize"):Connect(FitCanvas)
+	scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(FitCanvas)
+	task.defer(FitCanvas)
 
 	if readOnly then
 		local back = Button(Body, {
@@ -571,8 +607,8 @@ function Screens.Terms(readOnly)
 
 	local row = New("Frame", {
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, pad, 1, -(btnH + 14)),
-		Size = UDim2.new(1, -pad * 2, 0, 32),
+		Position = UDim2.new(0, pad, 1, -(btnH + (compact and 8 or 14))),
+		Size = UDim2.new(1, -pad * 2, 0, compact and 26 or 32),
 		BackgroundTransparency = 1,
 		ZIndex = 4,
 	}, Body)

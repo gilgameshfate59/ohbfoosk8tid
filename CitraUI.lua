@@ -1,9 +1,3 @@
--- CITRA UI
---
--- Based on Zolar by Da7mu (Ui-Collection). Rebranded, re-themed black and
--- orange, and given the mobile entry point the original does not have: it
--- detects touch devices but never gives them a way to open the menu.
-
 if getgenv().CitraUI and getgenv().CitraUI.Unload then
     getgenv().CitraUI:Unload()
 end
@@ -36,7 +30,6 @@ local Library = { } do
     Library.ConfigFolder = "Citra/Configs"
     Library.AssetsFolder = "Citra/Assets"
 
-    -- Hub logo, used by the window header, the home page and the mobile button.
     Library.Logo = "rbxassetid://95077438762744"
     Library.Discord = "https://discord.gg/yTUe6JNhCx"
 
@@ -48,12 +41,8 @@ local Library = { } do
         end
     end
 
-    -- One face throughout: Fredoka One, round and chunky.
-    --
-    -- This used to download Inter from GitHub on every single load, which cost
-    -- an HTTP round trip before the menu could draw and left the UI in a thin,
-    -- cold face if the fetch failed. A built-in font needs no network at all.
-    local UiFont = Font.fromEnum(Enum.Font.FredokaOne)
+    local UiFontEnum = Enum.Font.FredokaOne
+    local UiFont = Font.fromEnum(UiFontEnum)
     local UiFontBold = UiFont
 
     Library.Font = UiFont
@@ -121,6 +110,14 @@ local Library = { } do
 
     local function MeasureText(Text, Size, Width, FontFace)
         local Ok, Bounds = pcall(function()
+            return TextService:GetTextSize(Text, Size, UiFontEnum, Vector2.new(Width, 1000000))
+        end)
+
+        if Ok and typeof(Bounds) == "Vector2" then
+            return Bounds
+        end
+
+        local OkAsync, Async = pcall(function()
             return TextService:GetTextBoundsAsync({
                 Text = Text,
                 Font = FontFace or UiFont,
@@ -129,8 +126,8 @@ local Library = { } do
             })
         end)
 
-        if Ok and Bounds then
-            return Bounds
+        if OkAsync and Async then
+            return Async
         end
 
         local Estimate = math.min(#Text * Size * 0.52, Width)
@@ -142,9 +139,6 @@ local Library = { } do
     Library.WindowWidth = 716
     Library.WindowHeight = 540
 
-    -- Black and orange. The greys climb in small steps so panels read as depth
-    -- rather than needing borders, and only the accent carries colour -- on a
-    -- near-black ground the orange does all the pointing by itself.
     Library.Theme = {
         Background = Color3.fromRGB(10, 10, 12),
         Section = Color3.fromRGB(15, 15, 18),
@@ -695,23 +689,12 @@ local Library = { } do
         Library.ThemeDirty = true
     end
 
-    -- ---------------------------------------------------------------- transparency
-    -- Only the window body and the tab rail go translucent. Doing it by theme
-    -- key instead would catch every section and every input box, and the header
-    -- and sub-bar have to stay solid or the text in them stops reading.
-    --
-    -- No blur: a BlurEffect is a full-screen post-process, so it fogs the whole
-    -- game rather than just what shows through the window. Blurring only behind
-    -- the menu would mean rendering the world into a ViewportFrame, which costs
-    -- far more than the look is worth.
     local GlassItems = { }
     local GlassBase = setmetatable({ }, { __mode = "k" })
 
     Library.RegisterGlass = function(Self, Item, Weight)
         local Object = Item.Instance or Item
 
-        -- The resting value, not the live property: reading it mid-fade would
-        -- record a half-faded number as the surface's solid state.
         local Rest = Library.RestingValues[Object]
         local Base = Library.Baselines[Object]
 
@@ -738,8 +721,6 @@ local Library = { } do
             else
                 local Value = (GlassBase[Object] or 0) + Library.Transparency * Entry.Weight
 
-                -- Through StampResting so a later fade-in returns to the new
-                -- value rather than snapping the surface back to solid.
                 pcall(function()
                     Library:StampResting(Object, "BackgroundTransparency", Value)
                     Object.BackgroundTransparency = Value
@@ -752,8 +733,6 @@ local Library = { } do
         Library.Transparency = math.clamp(Value, 0, 0.85)
         Library:PaintGlass()
 
-        -- So a script setting this itself does not leave the settings slider
-        -- sitting at a number that is no longer true.
         if Library.OnTransparency then
             Library:SafeCall(Library.OnTransparency)
         end
@@ -854,8 +833,6 @@ local Library = { } do
 
             if not IsClick and not IsTouch then return end
             if IsOverAnyPopup() then return end
-            -- The resize grip lives on top of a draggable surface; without this
-            -- a resize would also drag the window out from under the cursor.
             if Library.Resizing then return end
 
             Dragging = true
@@ -896,7 +873,6 @@ local Library = { } do
     end
 
     Library.Unload = function(Self)
-        -- Scripts get their turn first, while their connections are still live.
         for _, Callback in Library.UnloadCallbacks do
             Library:SafeCall(Callback)
         end
@@ -936,9 +912,6 @@ local Library = { } do
         DisplayOrder = 1001
     })
 
-    -- The floating button lives in its own ScreenGui on purpose: hiding the
-    -- menu disables Holder, and a button parented inside it would vanish along
-    -- with the thing it is supposed to bring back.
     Library.ButtonHolder = Library:Create("ScreenGui", {
         Parent = GetHui(),
         Name = "\0",
@@ -1024,18 +997,6 @@ local Library = { } do
         return Frame
     end
 
-    -- ============================================================ LANGUAGE
-    -- The English string is its own key.
-    --
-    -- The old approach kept a table of keys and every label had to be
-    -- registered before it could be shown, so adding a feature meant editing
-    -- the string table too -- and forgetting to left "[Some Key]" on screen.
-    -- Here an unknown string simply stays English. Translating is optional and
-    -- can be done later without touching any of the UI code.
-    --
-    -- Labels register themselves as they are built, so switching language
-    -- re-translates the menu in place with no reload.
-
     Library.Language = "en"
     Library.Translations = { }
     Library.Languages = { { Code = "en", Name = "English" } }
@@ -1065,9 +1026,6 @@ local Library = { } do
 
         for Object, Original in TextOriginal do
             if Object.Parent then
-                -- Only retranslate labels still showing what we last set. A
-                -- slider's value or a username is written at runtime, and
-                -- resetting those to their original string would wipe live data.
                 if Object.Text == TextApplied[Object] then
                     local Shown = Library:Translate(Original)
                     Object.Text = Shown
@@ -1080,7 +1038,6 @@ local Library = { } do
         end
     end
 
-    -- Merge, so several scripts can each contribute their own strings.
     Library.AddTranslations = function(Self, Code, Name, Map)
         local Pack = Library.Translations[Code]
 
@@ -2452,14 +2409,6 @@ local Library = { } do
         task.delay(Duration, Dismiss)
     end
 
-    -- ============================================================ TOOLTIPS
-    -- A small question mark beside a control's name; hovering it explains what
-    -- the control does.
-    --
-    -- One panel is built and reused rather than one per control. A menu can
-    -- hold well over a hundred elements and only ever shows a single tooltip,
-    -- so per-element panels would be that many frames sitting idle forever.
-
     local TooltipPanel, TooltipText
     local TooltipToken = 0
 
@@ -2494,9 +2443,6 @@ local Library = { } do
         })
 
         TooltipText.Instance.TextYAlignment = Enum.TextYAlignment.Top
-        -- Belt and braces against clipping: never truncate, and let the label
-        -- grow taller than measured if the font wraps differently than
-        -- GetTextBoundsAsync predicted.
         TooltipText.Instance.TextTruncate = Enum.TextTruncate.None
         TooltipText.Instance.AutomaticSize = Enum.AutomaticSize.Y
         TooltipPanel.Instance.AutomaticSize = Enum.AutomaticSize.Y
@@ -2511,9 +2457,6 @@ local Library = { } do
         TooltipToken += 1
         local Token = TooltipToken
 
-        -- Measure at the width the label will actually get, and give the text a
-        -- fixed width with a free height. Sizing both axes from the measurement
-        -- is what clipped the last line when the real font wrapped differently.
         local Inner = TOOLTIP_MAX - 18
         local Bounds = MeasureText(Text, 13, Inner, UiFont)
         local TextW = math.min(math.ceil(Bounds.X), Inner)
@@ -2524,8 +2467,6 @@ local Library = { } do
         TooltipText.Instance.Size = UDim2.fromOffset(TextW, 0)
         TooltipPanel.Instance.Size = UDim2.fromOffset(W, 0)
 
-        -- Sit just under the marker, and stay on screen: near the right edge it
-        -- flips to the other side rather than hanging off.
         local Scale = Library:GetScreenScale()
         local Screen = Library.PopupHolder.Instance.AbsoluteSize / Scale
         local X = Anchor.AbsolutePosition.X / Scale
@@ -2559,15 +2500,9 @@ local Library = { } do
         end)
     end
 
-    -- Places the marker immediately after the label's text rather than at a
-    -- fixed offset, so it sits against short and long names alike.
     local function AttachTooltip(Row, Label, Text, Z)
         if not Text or Text == "" then return end
 
-        -- A bracketed question mark rather than an icon. It reads at any size,
-        -- needs no asset, and does not depend on the icon pack having the name
-        -- -- "circle-help" is not in this pack at all, which is why an icon
-        -- version rendered as nothing.
         local Marker = MakeText({
             Parent = Row.Instance,
             Text = "[ ? ]",
@@ -2593,7 +2528,6 @@ local Library = { } do
             local X = L.Position.X.Offset + Width + 6
             local Y = L.Position.Y.Offset + L.Size.Y.Offset / 2
 
-            -- Labels anchored on their middle report a centred Y already.
             if L.AnchorPoint.Y == 0.5 then
                 Y = L.Position.Y.Offset
                 Marker.Instance.Position = UDim2.new(L.Position.X.Scale, X, L.Position.Y.Scale, Y)
@@ -2615,7 +2549,6 @@ local Library = { } do
             HideTooltip()
         end)
 
-        -- Touch has no hover, so a tap shows it and the next tap dismisses it.
         Hit:Connect("MouseButton1Down", function()
             if TooltipPanel and TooltipPanel.Instance.Visible then
                 HideTooltip()
@@ -2630,11 +2563,6 @@ local Library = { } do
     Library.AttachTooltip = function(Self, Row, Label, Text, Z)
         return AttachTooltip(Row, Label, Text, Z)
     end
-
-    -- ============================================================ VISIBILITY
-    -- The original has no way to hide the menu at all -- no keybind, no
-    -- minimise, and on a touch device no way back once it is gone. Both are
-    -- added here, sharing one piece of state.
 
     Library.IsOpen = true
 
@@ -2656,7 +2584,6 @@ local Library = { } do
         Library:SetOpen(not Library.IsOpen)
     end
 
-    -- Desktop keybind. Touch devices get the button below instead.
     Library.ToggleKey = Enum.KeyCode.RightShift
 
     Library:Connect(UserInputService.InputBegan, function(Input, Processed)
@@ -2667,20 +2594,8 @@ local Library = { } do
         end
     end)
 
-    -- ============================================================ MOBILE BUTTON
-    -- A round, draggable handle that opens and closes the menu.
-    --
-    -- Dragging and tapping share the same touch, so they are told apart by how
-    -- far the finger travelled: under a few pixels is a tap, anything more is a
-    -- drag and must not toggle. Without that the button fires every time it is
-    -- moved, which is the usual way these end up unusable.
-
     Library.MobileButton = function(Self, Params)
         Params = Params or { }
-        -- Named MobileHandle, not Button: the library already exposes
-        -- Library.Button as the element constructor. Reusing that name both
-        -- short-circuits this guard against the constructor -- so the handle is
-        -- never built -- and clobbers Section:Button() for every script.
         if Library.MobileHandle then return Library.MobileHandle end
 
         local Size = Params.Size or 62
@@ -2730,8 +2645,6 @@ local Library = { } do
             ZIndex = 51
         })
 
-        -- Drag, with tap detection. Distance is measured in raw pixels because
-        -- that is what the finger actually moved, regardless of UI scale.
         local Dragging, Moved = false, 0
         local StartPos, StartOffset
         local TAP = 8
@@ -2786,14 +2699,8 @@ local Library = { } do
                 Library:ToggleOpen()
             end
 
-            -- Left exactly where it was dropped. It used to fly back to the
-            -- nearest edge, which overrides where someone deliberately put it.
-            -- The drag itself already clamps it on screen, so nothing else is
-            -- needed here.
         end)
 
-        -- Dim while the menu is open, so it reads as "close" rather than
-        -- competing with the panel it just opened.
         Library.OnToggle = function(Open)
             Button:Tween({ BackgroundTransparency = Open and 0.45 or 0.05 },
                 TweenInfo.new(0.18))
@@ -2809,8 +2716,6 @@ local Library = { } do
     Library.Window = function(Self, Params)
         Params = Params or { }
 
-        -- Not constants: the resize grip rewrites these and pushes the new
-        -- geometry down through the columns.
         local W = Library.WindowWidth
         local H = Library.WindowHeight
         local TopH = 51
@@ -2832,8 +2737,6 @@ local Library = { } do
 
         local Window = {
             Name = Params.Name or "Citra",
-            -- The hub logo by default, so the top-left corner is branded
-            -- without every script having to pass it.
             Icon = Params.Icon or Library.Logo,
             IsOpen = true,
             Tabs = { },
@@ -3479,23 +3382,11 @@ local Library = { } do
 
         Window.Items = Items
 
-        -- The two surfaces the transparency slider acts on. The header and
-        -- the sub-bar are deliberately not in here: they carry text over the
-        -- game world with nothing behind it, so they stay solid.
         Library:RegisterGlass(Items.Main, 1)
         Library:RegisterGlass(Items.Rail, 1)
 
         Items.Root:MakeDraggable(Items.Main.Instance)
         Items.Root:MakeDraggable(Items.Rail.Instance)
-
-        -- ---------------------------------------------------------------- resize
-        -- Real resizing: width and height move independently, so the menu can be
-        -- squeezed narrow as well as made smaller.
-        --
-        -- An earlier version drove UIScale instead. That only ever made the
-        -- whole thing uniformly bigger or smaller -- it could not squeeze -- so
-        -- everything inside is laid out relative to its column now and the
-        -- geometry below is recomputed on the way down.
 
         local MIN_W, MIN_H = 520, 380
 
@@ -3527,7 +3418,6 @@ local Library = { } do
             Items.TopLine.Instance.Size = UDim2.fromOffset(W, 1)
             Items.Content.Instance.Size = UDim2.fromOffset(W - 30, H - 96)
 
-            -- Columns carry the width every section and row inherits.
             for _, Tab in Window.Tabs do
                 for _, Sub in Tab.Subs do
                     if Sub.Items and Sub.Items.Page then
@@ -3613,12 +3503,6 @@ local Library = { } do
                 end)
             end)
 
-            -- Unconditional release. The per-input Changed watcher above is the
-            -- normal path, but if it is ever missed -- the button destroyed
-            -- mid-drag, a synthetic input, the window closing under the cursor
-            -- -- the flag would stick on and the menu would keep resizing
-            -- itself against every mouse move, which is unrecoverable without a
-            -- reload. Letting go of the button always ends a resize.
             Library:Connect(UserInputService.InputEnded, function(Input)
                 local IsClick = Input.UserInputType == Enum.UserInputType.MouseButton1
                 local IsTouch = Input.UserInputType == Enum.UserInputType.Touch
@@ -3637,8 +3521,6 @@ local Library = { } do
                 local IsTouch = Input.UserInputType == Enum.UserInputType.Touch
                 if not IsMove and not IsTouch then return end
 
-                -- Divide by the scale so a pixel of finger movement is a pixel
-                -- of window, whatever the interface scale is set to.
                 local Scale = Library:GetScreenScale()
                 local Delta = (Input.Position - StartInput) / Scale
 
@@ -3805,10 +3687,6 @@ local Library = { } do
             Window:PlayIntro()
         end)
 
-        -- Touch devices get the floating button automatically -- there is no
-        -- keyboard to press RightShift on, so without it the menu can never be
-        -- reopened once closed. Pass MobileButton = false to opt out, or true
-        -- to show it on desktop as well.
         local WantButton = Params.MobileButton
         if WantButton == nil then WantButton = IsMobile end
         if WantButton then
@@ -4535,7 +4413,6 @@ local Library = { } do
 
             local FrameHeight = Visible > 0 and (Y + 8) or 0
 
-            -- Width comes from the column, so it follows a resize on its own.
             Items.Frame.Instance.Size = UDim2.new(1, 0, 0, FrameHeight)
             Items.Holder.Instance.Visible = Visible > 0
             Section.Height = Visible > 0 and (26 + FrameHeight) or 0
@@ -5738,8 +5615,6 @@ local Library = { } do
             Z = 8
         })
 
-        -- A button's caption is centred, so there is no end-of-text to sit
-        -- against; the marker goes to the right edge of the row instead.
         if Params.Tooltip and Params.Tooltip ~= "" then
             local Marker = MakeText({
                 Parent = Row.Instance,
@@ -6169,10 +6044,6 @@ local Library = { } do
                 Text = Text,
                 TextSize = TextSize,
                 Pos = UDim2.fromOffset(14, Y),
-                -- Relative width so the text re-wraps when the window is
-                -- resized. The row height is still measured once, so a very
-                -- large resize can leave a paragraph slightly over or under its
-                -- box until the tab is reopened.
                 Size = UDim2.new(1, -28, 0, Height),
                 Color = Color,
                 Wrap = true,
@@ -6197,12 +6068,6 @@ local Library = { } do
         return setmetatable(Paragraph, Library)
     end
 
-
-    -- ============================================================ HOME PAGE
-    -- Takes over a SubTab's page the same way ThemeConfig does: the two normal
-    -- columns are hidden and the panels are drawn straight onto the page, so it
-    -- is laid out deliberately rather than as a list of rows.
-
     Library.HomePage = function(Self, Params)
         Params = Params or { }
 
@@ -6220,7 +6085,6 @@ local Library = { } do
         local Invite = Params.Discord or Library.Discord
         local Tagline = Params.Tagline or "Scripts that stay working."
 
-        -- ---------------------------------------------------------------- banner
         Items.Banner = MakeFrame({
             Parent = Page.Instance,
             Pos = UDim2.fromOffset(0, 0),
@@ -6265,8 +6129,6 @@ local Library = { } do
             Z = 4
         })
 
-        -- Rotating lines. The game name is looked up once in the background --
-        -- GetProductInfo is a web call and must not hold up the page build.
         local Lines = Params.Lines or {
             "Purchase Citra Premium in the Discord for more features and benefits",
             "Join the Discord to take part in the Citra community",
@@ -6294,7 +6156,6 @@ local Library = { } do
                 Home.LineIndex = (Home.LineIndex % #Lines) + 1
                 local Next = Lines[Home.LineIndex]
 
-                -- Cross-fade rather than a hard swap, so it does not flicker.
                 Library:Tween({ TextTransparency = 1 },
                     TweenInfo.new(0.35, Enum.EasingStyle.Quad), Items.Tagline.Instance)
                 task.wait(0.4)
@@ -6310,7 +6171,6 @@ local Library = { } do
             end
         end)
 
-        -- ---------------------------------------------------------------- discord
         Items.Discord = MakeFrame({
             Parent = Page.Instance,
             Pos = UDim2.fromOffset(0, 170),
@@ -6387,8 +6247,6 @@ local Library = { } do
                 Copied = pcall(setclipboard, Invite)
             end
 
-            -- Say what actually happened. Some executors have no clipboard at
-            -- all, and claiming success there just makes people paste nothing.
             Items.CopyLabel.Instance.Text = Copied and "Copied" or "Copy failed"
 
             task.delay(1.4, function()
@@ -6406,9 +6264,6 @@ local Library = { } do
             })
         end)
 
-        -- ---------------------------------------------------------------- account
-        -- Mirrors the identity shown in the top right, in a place you can
-        -- actually read it.
         Items.Account = MakeFrame({
             Parent = Page.Instance,
             Pos = UDim2.new(0.5, 8, 0, 0),
@@ -6516,7 +6371,6 @@ local Library = { } do
         Items.Executor = AccountRow(2, "Executor", (identifyexecutor and select(1, identifyexecutor()))
             or (syn and "Synapse") or "Unknown")
 
-        -- copying the id is the one thing people actually want from this panel
         local IdHit = MakeButton({
             Parent = Items.Account.Instance,
             Pos = UDim2.fromOffset(10, 176),
@@ -6535,7 +6389,6 @@ local Library = { } do
             })
         end)
 
-        -- ---------------------------------------------------------------- intro
         local Blocks = {
             { Frame = Items.Banner, Home = UDim2.fromOffset(0, 0) },
             { Frame = Items.Discord, Home = UDim2.fromOffset(0, 170) },
@@ -6712,8 +6565,6 @@ local Library = { } do
             Padding = UDim.new(0, 8)
         })
 
-        -- The right column is taller than a squeezed window, so it scrolls
-        -- rather than being clipped off the bottom on a resize.
         Items.RightScroll = Library:Create("ScrollingFrame", {
             Parent = Page.Instance,
             Name = "\0",
@@ -6988,9 +6839,6 @@ local Library = { } do
             Picker:SetOpen(not Picker.IsOpen)
         end)
 
-        -- Language. A cycler rather than a dropdown: the list is short, and a
-        -- dropdown here would open a popup over the colour pickers that share
-        -- this panel.
         MakeFrame({
             Parent = Items.ThemePanel.Instance,
             Pos = UDim2.fromOffset(14, 190),
@@ -7067,8 +6915,6 @@ local Library = { } do
             LangValue.Instance.Text = Next.Name
         end)
 
-        -- Transparency. Surfaces only, with a blur behind, so what shows
-        -- through is soft rather than a busy game world sitting under the text.
         MakeFrame({
             Parent = Items.ThemePanel.Instance,
             Pos = UDim2.fromOffset(14, 226),
@@ -7135,8 +6981,6 @@ local Library = { } do
             Z = 6
         })
 
-        -- 0.85 is where the surfaces stop reading as surfaces, so that is the
-        -- top of the slider rather than full invisibility.
         local MAX_TRANS = 0.85
         local TransGrab = false
 
@@ -7186,7 +7030,6 @@ local Library = { } do
         Library.OnTransparency = PaintTransparency
         PaintTransparency()
 
-        -- ------------------------------------------------------------ session
         Items.SessionPanel = MakeFrame({
             Parent = Items.RightScroll.Instance,
             Pos = UDim2.fromOffset(0, 510),
@@ -7237,8 +7080,6 @@ local Library = { } do
         end)
 
         do
-            -- Two clicks: one stray tap here throws away the whole session and
-            -- there is nothing to undo it with.
             local Armed = false
             local ArmToken = 0
 
@@ -7855,62 +7696,11 @@ local Library = { } do
     getgenv().CitraUI = Library
 end
 
--- ============================================================ DIALECT SHIMS
---
--- The hub scripts were written against two older libraries. Rather than fetch a
--- separate adapter -- a second GitHub round trip before any menu can draw, and a
--- second thing to rate-limit -- both adapters live here.
---
--- They hang off the library as fields, so the return value is unchanged: a
--- script written natively against Citra does
---
---     local Library = loadstring(game:HttpGet(".../CitraUI.lua"))()
---
--- and never sees them. A ported script reaches for Library.Shim (Linoria /
--- Samet dialect) or Library.WindUI (WindUI dialect) instead.
-
 local Shim do
-    --[[
-        CITRA SHIM  --  Linoria / Samet API  ->  CitraUI
-
-        Drop-in replacement for the old SametLinoriaShim (and for raw LinoriaLib).
-        A ported script reaches it off the library:
-
-            local Shim = loadstring(game:HttpGet(".../CitraUI.lua"))().Shim
-            Library, Toggles, Options, ThemeManager, SaveManager = Shim:Init({ ... })
-
-        and every Add*/Toggles/Options call it already had keeps working verbatim.
-
-        WHY A SHIM AND NOT A REWRITE
-          The ten hub scripts between them make ~1000 UI calls in the Linoria
-          dialect. Translating those by hand is a thousand chances to typo a flag
-          name. One adapter is ~600 lines and every script gets the port for free.
-
-        SHAPE MAPPING
-            Linoria                       Citra
-            -------------------------     -----------------------------------
-            Window:AddTab(n)              Window:Tab{Name=n}:SubTab{Name="Main"}
-            Tab:AddLeftGroupbox(n)        SubTab:Section{Name=n, Side=1}
-            Tab:AddRightGroupbox(n)       SubTab:Section{Name=n, Side=2}
-            Tab:AddLeftTabbox()           one Section per :AddTab, same column
-            Groupbox:AddToggle(i, o)      Section:Toggle{...}      + Toggles[i]
-            Toggle:AddKeyPicker(i, o)     Toggle:Keybind{...}      + Options[i]
-            Toggle:AddColorPicker(i, o)   Toggle:Colorpicker{...}  + Options[i]
-            ThemeManager/SaveManager      one SubTab:ThemeConfig{} on that tab
-
-        THE TWO PLACES THE DIALECTS DISAGREE
-          * Slider `Rounding` is a decimal-place count; Citra's `Decimals` is a
-            step size. Rounding 0 -> 1, 1 -> 0.1, 2 -> 0.01.
-          * Multi-dropdowns: Linoria's .Value is a SET, { [name] = true }, and the
-            scripts iterate it with pairs(). Citra's is an ARRAY. The wrapper keeps
-            the Linoria shape on .Value and converts on the way in and out.
-    --]]
 
     local UserInputService = game:GetService("UserInputService")
 
     Shim = { }
-
-    -- ============================================================ HELPERS
 
     local function Call(fn, ...)
         if type(fn) ~= "function" then return end
@@ -7918,8 +7708,6 @@ local Shim do
         if not ok then warn("[Citra] " .. tostring(err)) end
     end
 
-    -- Linoria writes keys as strings ("RightShift", "MB2", "None"); Citra wants the
-    -- enum. Unknown names resolve to nil, which reads as "unbound" everywhere.
     local function ParseKey(Key)
         if typeof(Key) == "EnumItem" then return Key end
         if type(Key) ~= "string" or Key == "" or Key == "None" then return nil end
@@ -7933,13 +7721,11 @@ local Shim do
         return nil
     end
 
-    -- Rounding (decimal places) -> Decimals (step). See header.
     local function StepFor(Rounding)
         local R = tonumber(Rounding) or 0
         return 10 ^ (-R)
     end
 
-    -- Linoria set  <->  Citra array
     local function SetToArray(Set)
         local Out = {}
         if type(Set) ~= "table" then return Out end
@@ -7962,9 +7748,6 @@ local Shim do
         return Out
     end
 
-    -- Tab names are the only hint we get about what a tab is for, so the icon is
-    -- guessed from the name. Anything unrecognised gets a neutral dot rather than
-    -- a wrong-but-confident glyph.
     local TAB_ICONS = {
         { "aimbot", "crosshair" }, { "aim", "crosshair" },
         { "esp", "eye" }, { "visual", "eye" },
@@ -7988,8 +7771,6 @@ local Shim do
         return "circle"
     end
 
-    -- ============================================================ INIT
-
     function Shim:Init(Config)
         Config = Config or {}
 
@@ -8001,19 +7782,11 @@ local Shim do
         local Toggles, Options = {}, {}
         getgenv().Toggles, getgenv().Options = Toggles, Options
 
-        -- ---------------------------------------------------------- Library
-        -- Plain table with a metatable: `Library.ToggleKeybind = key` has to reach
-        -- CitraUI's ToggleKey, and `Library.Unloaded` is polled by every farm loop
-        -- in every script, so both have to be live rather than snapshots.
         local Raw = {
             Citra = UI,
             Toggles = Toggles,
             Options = Options,
-            -- Live: elements register their Linoria flag with CitraUI, so scripts
-            -- that roll their own config save (Redliner) can read it straight off.
             Flags = UI.Flags,
-            -- Some scripts hide the on-screen keybind list; Citra has no such
-            -- panel, so this absorbs the call instead of erroring.
             KeyList = { SetVisibility = function() end },
         }
 
@@ -8057,10 +7830,6 @@ local Shim do
             return UI:Unload()
         end
 
-        -- Every farm loop in every script is a `while not Library.Unloaded` spin, so
-        -- the flag has to be set by ANY teardown -- including the Unload button on
-        -- Citra's own config page, which never goes through Library:Unload. This is
-        -- registered before the scripts' own callbacks, so they see it already true.
         UI:OnUnload(function()
             UI.Unloaded = true
         end)
@@ -8069,8 +7838,6 @@ local Shim do
             return UI:ToggleOpen()
         end
 
-        -- Citra's watermark is a single shared bar; it is created on first use so a
-        -- script that only ever hides it never draws one.
         function Library:SetWatermark(Text)
             if not rawget(Raw, "WatermarkBar") then
                 rawset(Raw, "WatermarkBar", UI:Watermark({ Icon = "layers" }))
@@ -8085,10 +7852,6 @@ local Shim do
             if Bar then pcall(Bar.SetVisible, Bar, Bool and true or false) end
         end
 
-        -- ---------------------------------------------------------- elements
-        -- One builder table, reused by every groupbox. `Section` is the live Citra
-        -- section; `Idx` is the Linoria flag the script will read back.
-
         local Groupbox = {}
         Groupbox.__index = Groupbox
 
@@ -8100,8 +7863,6 @@ local Shim do
             }
 
             function W:GetState()
-                -- SyncToggleState is Citra's only keybind behaviour, so the state
-                -- of the bind IS the state of its toggle.
                 local T = ParentIdx and Toggles[ParentIdx]
                 return T and T.Value or false
             end
@@ -8251,7 +8012,6 @@ local Shim do
             local Multi = Opts.Multi and true or false
             local Values = Opts.Values or {}
 
-            -- Linoria's Default is an index for single-select and a set for multi.
             local Default
             if Multi then
                 Default = SetToArray(Opts.Default)
@@ -8289,8 +8049,6 @@ local Shim do
                 List = List or W.Values
                 W.Values = List
                 Element:Refresh(List)
-                -- Refresh clears the popup rows, so a selection that survived the
-                -- new list has to be re-applied or the field reads "None".
                 if Multi then
                     local Keep = {}
                     for _, Name in ipairs(List) do
@@ -8323,8 +8081,6 @@ local Shim do
             return W
         end
 
-        -- Two call shapes in the wild: AddButton({Text=, Func=}) and
-        -- AddButton("text", fn). Both appear across the hub scripts.
         function Groupbox:AddButton(A, B)
             local Text, Func, Tooltip
 
@@ -8344,8 +8100,6 @@ local Shim do
 
             local W = { Section = Section, Element = Element }
             function W:SetText(New) Element:SetText(tostring(New)) end
-            -- Linoria chains a second button onto the first to sit them side by
-            -- side; Citra stacks, so the chained one is just another row.
             function W:AddButton(A2, B2) return Groupbox.AddButton(W, A2, B2) end
             return W
         end
@@ -8399,8 +8153,6 @@ local Shim do
             return W
         end
 
-        -- Citra sections already carry their own spacing, so a divider is a blank
-        -- row rather than a rule that would double up on the section border.
         function Groupbox:AddDivider()
             return self.Section:Label({ Name = "" })
         end
@@ -8413,8 +8165,6 @@ local Shim do
             return setmetatable({ Section = Section }, Groupbox)
         end
 
-        -- ---------------------------------------------------------- tabs
-
         local Tab = {}
         Tab.__index = Tab
 
@@ -8426,9 +8176,6 @@ local Shim do
             return NewGroupbox(self.Sub:Section({ Name = Name or "Group", Side = 2 }))
         end
 
-        -- A tabbox is a groupbox with switchable pages. Citra has no such control,
-        -- so each page becomes its own section stacked in the same column -- every
-        -- element stays reachable, it just needs a scroll instead of a click.
         local function NewTabbox(Sub, Side)
             return {
                 AddTab = function(_, Name)
@@ -8440,16 +8187,12 @@ local Shim do
         function Tab:AddLeftTabbox() return NewTabbox(self.Sub, 1) end
         function Tab:AddRightTabbox() return NewTabbox(self.Sub, 2) end
 
-        -- The theme/config page. Built at most once per tab no matter how many of
-        -- ThemeManager:ApplyToTab / SaveManager:BuildConfigSection get called.
         function Tab:EnsureConfigPage()
             if self.ConfigSub then return self.ConfigSub end
             self.ConfigSub = self.Citra:SubTab({ Name = "Config", Icon = "save" })
             self.ConfigSub:ThemeConfig({})
             return self.ConfigSub
         end
-
-        -- ---------------------------------------------------------- window
 
         function Library:CreateWindow(WConfig)
             WConfig = WConfig or {}
@@ -8484,10 +8227,6 @@ local Shim do
             return Window
         end
 
-        -- ---------------------------------------------------------- managers
-        -- Citra owns saving and theming in one page, so both managers are thin
-        -- wrappers that make sure that page exists and then get out of the way.
-
         local ThemeManager = {
             SetLibrary = function() end,
             SetFolder = function(_, Folder)
@@ -8507,8 +8246,6 @@ local Shim do
             SetIgnoreIndexes = function() end,
             BuildConfigSection = function(_, T) if T and T.EnsureConfigPage then T:EnsureConfigPage() end end,
             BuildFolderTree = function() end,
-            -- Citra's config page loads the autoload entry itself; there is nothing
-            -- for the script to trigger.
             LoadAutoloadConfig = function() end,
             Save = function() end,
             Load = function() end,
@@ -8519,40 +8256,8 @@ local Shim do
 end
 
 local WindUI do
-    --[[
-        CITRA WIND SHIM  --  WindUI API  ->  CitraUI
-
-        A table shaped like WindUI. A ported script reaches it off the library:
-
-            local WindUI = loadstring(game:HttpGet(".../CitraUI.lua"))().WindUI
-
-        and keeps every :CreateWindow / :Tab / :Section / :Toggle call it has.
-
-        SHAPE MAPPING
-            WindUI                          Citra
-            ----------------------------    ------------------------------------
-            WindUI:CreateWindow{...}        Library:Window{...}
-            Window:Section{Title=t}         a namespace; Citra's rail is flat, so
-                                            the sidebar grouping is dropped and the
-                                            tabs sit in the order they were made
-            Group:Tab{Title, Icon}          Window:Tab{...}:SubTab{Name="Main"}
-            Tab:Section{Title}              SubTab:Section{Side = alternating}
-            Sec:Toggle{Title,Desc,Value}    Section:Toggle{Name,Tooltip,Default}
-            Sec:Slider{Value={Min,Max,Default}, Step}
-                                            Section:Slider{Min,Max,Default,Decimals}
-
-        WHAT IS DELIBERATELY NOT REPRODUCED
-          * Window:Tag -- Citra has a watermark instead and the tag is decoration.
-          * Locked / Lock() / Unlock() -- no disabled state in Citra; the call is
-            absorbed so a script that locks a control still runs.
-          * Localization is real: the "loc:" prefix is stripped off every Title and
-            Desc, and the translation table is handed to Citra's own language
-            system, so the Language row in Settings still switches these strings.
-    --]]
 
     WindUI = { }
-
-    -- ============================================================ HELPERS
 
     local function Call(fn, ...)
         if type(fn) ~= "function" then return end
@@ -8562,8 +8267,6 @@ local WindUI do
 
     local Prefix = "loc:"
 
-    -- Titles arrive as "loc:Auto Collect". Citra translates by the plain string, so
-    -- the marker comes off here and the key stays the English text.
     local function Plain(Text)
         if type(Text) ~= "string" then return Text end
         if string.sub(Text, 1, #Prefix) == Prefix then
@@ -8582,14 +8285,7 @@ local WindUI do
 
     local UI = Library
 
-    -- The library is in this same file now, so there is nothing to fetch. Load()
-    -- stays so every call site below reads exactly as it did.
     local function Load() return UI end
-
-    -- ============================================================ ELEMENTS
-    -- `Sec` is a live Citra section. Every builder returns a small handle carrying
-    -- the methods the hub scripts actually call: SetDesc, SetTitle, Refresh,
-    -- Select, SetValue, Lock, Unlock.
 
     local Section = {}
     Section.__index = Section
@@ -8630,8 +8326,6 @@ local WindUI do
         })
     end
 
-    -- WindUI packs the bounds into Value = { Min, Max, Default } and carries the
-    -- granularity in Step; Citra takes them flat, with Step as Decimals.
     function Section:Slider(O)
         O = O or {}
         local V = O.Value or {}
@@ -8710,8 +8404,6 @@ local WindUI do
             Default = ParseKey(O.Value),
             Flag = O.Flag,
             Callback = function(Key)
-                -- The scripts hand this straight to Enum.KeyCode[key], so give
-                -- them the bare name rather than the enum.
                 Call(O.Callback, typeof(Key) == "EnumItem" and Key.Name or Key)
             end,
         })
@@ -8737,13 +8429,9 @@ local WindUI do
     Section.Code = Section.Paragraph
     Section.Label = Section.Paragraph
 
-    -- ============================================================ TABS
-
     local Tab = {}
     Tab.__index = Tab
 
-    -- Sections alternate columns so a tab with several of them fills the window
-    -- instead of running one long strip down the left.
     function Tab:Section(O)
         O = O or {}
         self.Count = self.Count + 1
@@ -8754,8 +8442,6 @@ local WindUI do
         return setmetatable({ Sec = Sec }, Section)
     end
 
-    -- WindUI lets elements hang straight off a tab. Those land in an unnamed
-    -- section so the layout stays consistent with the grouped ones.
     local function Loose(self)
         if not self.LooseSection then
             self.LooseSection = self:Section({ Title = " " })
@@ -8771,8 +8457,6 @@ local WindUI do
     end
 
     function Tab:Select() self.Citra:Select() end
-
-    -- ============================================================ WINDOW
 
     function WindUI:CreateWindow(O)
         O = O or {}
@@ -8800,8 +8484,6 @@ local WindUI do
             return T
         end
 
-        -- A sidebar group. Citra's rail is flat, so the group is a pass-through
-        -- that just forwards :Tab to the window.
         function Window:Section()
             return { Tab = function(_, TO) return NewTab(TO) end }
         end
@@ -8820,8 +8502,6 @@ local WindUI do
         function Window:Destroy() UI:Unload() end
         function Window:OnDestroy(cb) UI:OnUnload(cb) end
 
-        -- Citra fires one OnToggle for both directions; split it back into the two
-        -- callbacks WindUI hands out, which is what the Island hooks into.
         local OpenCBs, CloseCBs = {}, {}
         function Window:OnOpen(cb) table.insert(OpenCBs, cb) end
         function Window:OnClose(cb) table.insert(CloseCBs, cb) end
@@ -8835,8 +8515,6 @@ local WindUI do
         return Window
     end
 
-    -- ============================================================ LIBRARY-LEVEL
-
     function WindUI:Notify(O)
         O = O or {}
         Load()
@@ -8848,8 +8526,6 @@ local WindUI do
         })
     end
 
-    -- Core.Localize calls this with every language at once. Citra registers packs
-    -- one language at a time, so this fans them out.
     function WindUI:Localization(O)
         O = O or {}
         Load()
@@ -8873,17 +8549,12 @@ local WindUI do
         pcall(function() UI:SetLanguage(Code) end)
     end
 
-    -- Core registers a generated accent theme by name and then selects it in the
-    -- Theme dropdown, so that name has to appear in the list or the row reads
-    -- "None". The colour it carries is already applied as the accent.
     local AddedThemes = {}
     local CurrentTheme = "Citra"
 
     function WindUI:SetTheme(Name)
         Load()
         CurrentTheme = Name or CurrentTheme
-        -- A generated accent theme has no Citra preset behind it; SetTheme simply
-        -- finds nothing and leaves the accent where AddTheme put it.
         pcall(function() UI:SetTheme(Name) end)
     end
 
@@ -8903,9 +8574,6 @@ local WindUI do
         return CurrentTheme
     end
 
-    -- Core builds an accent theme by cloning Themes.Dark and writing Primary /
-    -- Slider / Checkbox / Toggle. Citra names those differently, so the clone is
-    -- translated into a Citra preset on the way in.
     WindUI.Themes = setmetatable({}, {
         __index = function(_, Key)
             if Key == "Dark" then return { Name = "Dark" } end

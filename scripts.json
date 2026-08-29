@@ -46,6 +46,13 @@
       "universe": 6945584306,
       "places": [94647229517154],
       "status": "Working"
+    },
+    {
+      "name": "Steal An Egg",
+      "file": "StealEgg.lua",
+      "universe": 10563114921,
+      "places": [107778070777162],
+      "status": "Working"
     }
   ]
 }

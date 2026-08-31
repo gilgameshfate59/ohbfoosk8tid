@@ -6481,7 +6481,7 @@ local Library = { } do
 
         Items.NameBox = MakeFrame({
             Parent = Items.CreateBox.Instance,
-            Size = UDim2.new(1, -140, 0, 40),
+            Size = UDim2.new(1, -94, 0, 40),
             Color = "Element",
             Round = 6,
             Clip = true,
@@ -6536,34 +6536,6 @@ local Library = { } do
             Z = 7
         })
 
-        Items.Import = MakeFrame({
-            Parent = Items.CreateBox.Instance,
-            Anchor = Vector2.new(1, 0),
-            Pos = UDim2.new(1, -90, 0, 0),
-            Size = UDim2.fromOffset(40, 40),
-            Color = "Element",
-            Round = 6,
-            Clip = true,
-            Z = 4
-        })
-
-        HoverSwap(Items.Import)
-
-        MakeImage({
-            Parent = Items.Import.Instance,
-            Icon = "clipboard-paste",
-            Anchor = Vector2.new(0.5, 0.5),
-            Pos = UDim2.fromScale(0.5, 0.5),
-            Size = UDim2.fromOffset(15, 15),
-            Color = "DimIcon",
-            Z = 6
-        })
-
-        Items.ImportHit = MakeButton({
-            Parent = Items.Import.Instance,
-            Z = 7
-        })
-
         Items.AutoBar = MakeFrame({
             Parent = Page.Instance,
             Pos = UDim2.fromOffset(0, 52),
@@ -6602,10 +6574,77 @@ local Library = { } do
             Z = 5
         })
 
-        Items.ListHolder = MakeFrame({
+        -- Importing gets its own row rather than sharing the name box.
+        -- A shared box means one field that is sometimes a six-letter name and
+        -- sometimes 300 characters of JSON, and no way to tell which it wants.
+        Items.ImportBox = MakeFrame({
             Parent = Page.Instance,
             Pos = UDim2.fromOffset(0, 90),
-            Size = UDim2.new(0.5, -8, 1, -90),
+            Size = UDim2.new(0.5, -8, 0, 34),
+            Z = 3
+        })
+
+        Items.ImportField = MakeFrame({
+            Parent = Items.ImportBox.Instance,
+            Size = UDim2.new(1, -90, 0, 34),
+            Color = "Element",
+            Round = 6,
+            Clip = true,
+            Z = 4
+        })
+
+        MakeImage({
+            Parent = Items.ImportField.Instance,
+            Icon = "clipboard-paste",
+            Anchor = Vector2.new(0, 0.5),
+            Pos = UDim2.new(0, 11, 0.5, 0),
+            Size = UDim2.fromOffset(13, 13),
+            Color = "DimText",
+            Z = 5
+        })
+
+        Items.ImportInput = MakeInput({
+            Parent = Items.ImportField.Instance,
+            Placeholder = "paste a shared config here",
+            Pos = UDim2.fromOffset(32, 0),
+            Size = UDim2.new(1, -42, 1, 0),
+            TextSize = 14,
+            Z = 5
+        })
+
+        Items.Import = MakeFrame({
+            Parent = Items.ImportBox.Instance,
+            Anchor = Vector2.new(1, 0),
+            Pos = UDim2.new(1, 0, 0, 0),
+            Size = UDim2.fromOffset(84, 34),
+            Color = "Element",
+            Round = 6,
+            Clip = true,
+            Z = 4
+        })
+
+        HoverSwap(Items.Import)
+        Items.ImportSweep = MakeSweep(Items.Import.Instance, 5)
+
+        MakeText({
+            Parent = Items.Import.Instance,
+            Text = "Import",
+            TextSize = 15,
+            Size = UDim2.new(1, 0, 1, 0),
+            Color = "Text",
+            Align = Enum.TextXAlignment.Center,
+            Z = 6
+        })
+
+        Items.ImportHit = MakeButton({
+            Parent = Items.Import.Instance,
+            Z = 7
+        })
+
+        Items.ListHolder = MakeFrame({
+            Parent = Page.Instance,
+            Pos = UDim2.fromOffset(0, 132),
+            Size = UDim2.new(0.5, -8, 1, -132),
             Z = 3
         })
 
@@ -7470,7 +7509,12 @@ local Library = { } do
         end
 
         Items.ImportHit:Connect("MouseButton1Down", function()
-            local Name, Info = Library:ImportConfig(nil, Items.NameInput.Instance.Text)
+            PlaySweep(Items.ImportSweep.Instance)
+
+            -- Whatever is in the import field, falling back to the clipboard
+            -- when it is empty -- which only some executors can read.
+            local Pasted = Items.ImportInput.Instance.Text
+            local Name, Info = Library:ImportConfig(Pasted, nil)
 
             if not Name then
                 Library:Notification({
@@ -7482,7 +7526,7 @@ local Library = { } do
                 return
             end
 
-            Items.NameInput.Instance.Text = ""
+            Items.ImportInput.Instance.Text = ""
             Config.Selected = Name
             RefreshList()
             ShowInfo(Name)
@@ -7535,7 +7579,8 @@ local Library = { } do
         local Blocks = {
             { Frame = Items.CreateBox, Home = UDim2.fromOffset(0, 0) },
             { Frame = Items.AutoBar, Home = UDim2.fromOffset(0, 52) },
-            { Frame = Items.ListHolder, Home = UDim2.fromOffset(0, 90) },
+            { Frame = Items.ImportBox, Home = UDim2.fromOffset(0, 90) },
+            { Frame = Items.ListHolder, Home = UDim2.fromOffset(0, 132) },
             { Frame = Items.InfoPanel, Home = UDim2.fromOffset(0, 0) },
             { Frame = Items.ThemePanel, Home = UDim2.fromOffset(0, 216) },
             { Frame = Items.SessionPanel, Home = UDim2.fromOffset(0, 510) }
@@ -7951,10 +7996,16 @@ local Library = { } do
         if not writefile then return nil, "this executor cannot write files" end
 
         if not Text or Text == "" then
+            -- Most executors expose setclipboard but no reader at all, and
+            -- Roblox has no clipboard-read API to fall back on -- so this path
+            -- is simply unavailable on a lot of them. Pasting the config into
+            -- the name box is the way in that always works.
             local Get = getclipboard or get_clipboard
                 or (getgenv and getgenv().getclipboard)
 
-            if not Get then return nil, "this executor cannot read the clipboard" end
+            if not Get then
+                return nil, "your executor cannot read the clipboard -- paste the config into the name box instead"
+            end
 
             local Ok, Clip = pcall(Get)
             if not Ok or type(Clip) ~= "string" or Clip == "" then
@@ -7969,7 +8020,7 @@ local Library = { } do
         end)
 
         if not Ok or type(Decoded) ~= "table" then
-            return nil, "that is not a config -- copy the whole thing, braces included"
+            return nil, "that is not a config -- paste the whole thing, braces included"
         end
 
         -- A config with no settings in it is the old broken kind, and importing

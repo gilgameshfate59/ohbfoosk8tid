@@ -816,12 +816,10 @@ local Library = { } do
             local NewX = StartPosition.X + DragDelta.X
             local NewY = StartPosition.Y + DragDelta.Y
 
-            local ScreenSize = Gui.Parent.AbsoluteSize / Scale
-            local GuiSize = Gui.AbsoluteSize / Scale
-            local Anchor = Gui.AnchorPoint
-
-            NewX = math.clamp(NewX, GuiSize.X * Anchor.X, ScreenSize.X - GuiSize.X * (1 - Anchor.X))
-            NewY = math.clamp(NewY, GuiSize.Y * Anchor.Y, ScreenSize.Y - GuiSize.Y * (1 - Anchor.Y))
+            -- Deliberately unclamped: the window follows the cursor straight
+            -- off the edge of the screen instead of sticking to it. Resizing the
+            -- viewport still pulls every window back into view, so one can never
+            -- be stranded out of reach.
 
             local Info = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
             Self:Tween({ Position = UDim2.fromOffset(NewX, NewY) }, Info)
@@ -6538,10 +6536,48 @@ local Library = { } do
             Z = 7
         })
 
-        Items.ListHolder = MakeFrame({
+        Items.AutoBar = MakeFrame({
             Parent = Page.Instance,
             Pos = UDim2.fromOffset(0, 52),
-            Size = UDim2.new(0.5, -8, 1, -52),
+            Size = UDim2.new(0.5, -8, 0, 30),
+            Color = "Element",
+            Round = 6,
+            Z = 3
+        })
+
+        Items.AutoLabel = MakeText({
+            Parent = Items.AutoBar.Instance,
+            Text = "Autoload config: none",
+            TextSize = 14,
+            Pos = UDim2.fromOffset(10, 5),
+            Size = UDim2.new(1, -44, 0, 20),
+            Color = "DimText",
+            Truncate = true,
+            Z = 4
+        })
+
+        Items.AutoClearIcon = MakeImage({
+            Parent = Items.AutoBar.Instance,
+            Icon = "x",
+            Anchor = Vector2.new(1, 0.5),
+            Pos = UDim2.new(1, -10, 0.5, 0),
+            Size = UDim2.fromOffset(13, 13),
+            Color = "DimIcon",
+            Z = 4
+        })
+
+        Items.AutoClearHit = MakeButton({
+            Parent = Items.AutoBar.Instance,
+            Anchor = Vector2.new(1, 0.5),
+            Pos = UDim2.new(1, -4, 0.5, 0),
+            Size = UDim2.fromOffset(26, 26),
+            Z = 5
+        })
+
+        Items.ListHolder = MakeFrame({
+            Parent = Page.Instance,
+            Pos = UDim2.fromOffset(0, 90),
+            Size = UDim2.new(0.5, -8, 1, -90),
             Z = 3
         })
 
@@ -6654,6 +6690,10 @@ local Library = { } do
         InfoRows.Created = InfoRow(3, "clock", "Created")
         InfoRows.Creator = InfoRow(4, "user", "Creator")
         InfoRows.Elements = InfoRow(5, "box", "Saved flags")
+
+        -- Forward declared: AddRow's star button calls it, and it in turn
+        -- repaints every row's star.
+        local RefreshAutoload
 
         local function ShowInfo(Name)
             if not Name then
@@ -7181,7 +7221,7 @@ local Library = { } do
                 Row = Row
             }
 
-            local function IconButton(Offset, Icon, Callback)
+            local function IconButton(Offset, Icon, Callback, Rest)
                 local Image = MakeImage({
                     Parent = Row.Instance,
                     Icon = Icon,
@@ -7200,14 +7240,41 @@ local Library = { } do
                     Z = 6
                 })
 
+                -- Rest lets a button keep a colour of its own when the mouse
+                -- leaves, which is what marks the autoloaded config's star.
                 Hit:OnHover(function()
                     Image:Tween({ ImageColor3 = Library.Theme.Text })
                 end, function()
-                    Image:Tween({ ImageColor3 = Library.Theme.DimText })
+                    Image:Tween({
+                        ImageColor3 = Rest and Rest() or Library.Theme.DimText
+                    })
                 end)
 
                 Hit:Connect("MouseButton1Down", Callback)
+                return Image
             end
+
+            Data.Name = Name
+
+            Data.Star = IconButton(-92, "star", function()
+                local Current = Library:GetAutoload()
+                local Wanted = Current ~= Name and Name or nil
+
+                Library:SetAutoload(Wanted)
+                RefreshAutoload()
+
+                Library:Notification({
+                    Name = Wanted and "Autoload set" or "Autoload cleared",
+                    Description = Wanted
+                        and ("\"" .. Name .. "\" will load itself next time you execute.")
+                        or "No config will load on its own now.",
+                    Icon = "star"
+                })
+            end, function()
+                return Name == Library:GetAutoload()
+                    and Library.Theme.Accent
+                    or Library.Theme.DimIcon
+            end)
 
             IconButton(-66, "download", function()
                 local Created
@@ -7290,7 +7357,7 @@ local Library = { } do
 
             local Hit = MakeButton({
                 Parent = Row.Instance,
-                Size = UDim2.new(1, -96, 1, 0),
+                Size = UDim2.new(1, -122, 1, 0),
                 Z = 5
             })
 
@@ -7319,6 +7386,43 @@ local Library = { } do
             return Data
         end
 
+        RefreshAutoload = function()
+            local Name = Library:GetAutoload()
+
+            Items.AutoLabel.Instance.Text = "Autoload config: " .. (Name or "none")
+            Items.AutoLabel:ChangeItemTheme({ TextColor3 = Name and "Text" or "DimText" })
+            Items.AutoLabel.Instance.TextColor3 =
+                Name and Library.Theme.Text or Library.Theme.DimText
+
+            Items.AutoClearIcon.Instance.ImageTransparency = Name and 0 or 0.6
+
+            for _, Data in Config.Rows do
+                if not Data.Star then continue end
+
+                local On = Data.Name == Name
+
+                -- Registered with the theme as well as painted, so switching
+                -- theme does not leave the marked star the old accent colour.
+                Data.Star:ChangeItemTheme({ ImageColor3 = On and "Accent" or "DimIcon" })
+                Data.Star.Instance.ImageColor3 = On
+                    and Library.Theme.Accent
+                    or Library.Theme.DimIcon
+            end
+        end
+
+        Items.AutoClearHit:Connect("MouseButton1Down", function()
+            if not Library:GetAutoload() then return end
+
+            Library:SetAutoload(nil)
+            RefreshAutoload()
+
+            Library:Notification({
+                Name = "Autoload cleared",
+                Description = "No config will load on its own now.",
+                Icon = "x"
+            })
+        end)
+
         RefreshList = function()
             for _, Data in Config.Rows do
                 Data.Slot.Instance:Destroy()
@@ -7333,6 +7437,8 @@ local Library = { } do
 
             local Height = #Config.Rows * 52
             Items.List.Instance.CanvasSize = UDim2.fromOffset(0, math.max(Height - 8, 0))
+
+            RefreshAutoload()
         end
 
         Items.CreateHit:Connect("MouseButton1Down", function()
@@ -7375,7 +7481,8 @@ local Library = { } do
 
         local Blocks = {
             { Frame = Items.CreateBox, Home = UDim2.fromOffset(0, 0) },
-            { Frame = Items.ListHolder, Home = UDim2.fromOffset(0, 52) },
+            { Frame = Items.AutoBar, Home = UDim2.fromOffset(0, 52) },
+            { Frame = Items.ListHolder, Home = UDim2.fromOffset(0, 90) },
             { Frame = Items.InfoPanel, Home = UDim2.fromOffset(0, 0) },
             { Frame = Items.ThemePanel, Home = UDim2.fromOffset(0, 216) },
             { Frame = Items.SessionPanel, Home = UDim2.fromOffset(0, 510) }
@@ -7435,6 +7542,36 @@ local Library = { } do
 
         RefreshList()
         ShowInfo(nil)
+
+        -- Restore the marked config once per execution, deferred so the rest of
+        -- the script has finished registering its elements first -- a flag that
+        -- does not exist yet cannot be set, and loading early would silently
+        -- drop most of the config.
+        if not Library.AutoloadDone then
+            Library.AutoloadDone = true
+
+            task.defer(function()
+                local Name = Library:GetAutoload()
+                if not Name then return end
+                if not Library:LoadConfigFile(Name) then return end
+
+                Config.Selected = Name
+                RefreshList()
+                ShowInfo(Name)
+
+                for _, Row in Config.Rows do
+                    Row:SetSelected(Row.Name == Name)
+                end
+
+                if RefreshThemeUI then RefreshThemeUI() end
+
+                Library:Notification({
+                    Name = "Config autoloaded",
+                    Description = "\"" .. Name .. "\" was restored on launch.",
+                    Icon = "star"
+                })
+            end)
+        end
 
         return Config
     end
@@ -7659,6 +7796,43 @@ local Library = { } do
         if not isfile(Path) then return false end
 
         return Library:LoadConfig(readfile(Path))
+    end
+
+    -- Autoload: which config to restore the next time the script is executed.
+    --
+    -- Stored as plain text beside the configs it points at, so redirecting
+    -- ConfigFolder per script carries the autoload with it. ListConfigs only
+    -- picks up ".json", so this can never show up as a config of its own.
+    local function AutoloadPath()
+        return Library.ConfigFolder .. "/autoload.txt"
+    end
+
+    Library.GetAutoload = function(Self)
+        if not isfile or not isfile(AutoloadPath()) then return nil end
+
+        local Ok, Name = pcall(readfile, AutoloadPath())
+        if not Ok or type(Name) ~= "string" or Name == "" then return nil end
+
+        -- The config it names may have been deleted since it was marked.
+        if not isfile(Library.ConfigFolder .. "/" .. Name .. ".json") then
+            return nil
+        end
+
+        return Name
+    end
+
+    Library.SetAutoload = function(Self, Name)
+        if not writefile then return false end
+
+        if Name then
+            writefile(AutoloadPath(), Name)
+        elseif delfile and isfile and isfile(AutoloadPath()) then
+            delfile(AutoloadPath())
+        else
+            writefile(AutoloadPath(), "")
+        end
+
+        return true
     end
 
     Library.ListConfigs = function(Self)

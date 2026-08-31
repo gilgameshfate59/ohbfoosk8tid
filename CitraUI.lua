@@ -6481,7 +6481,7 @@ local Library = { } do
 
         Items.NameBox = MakeFrame({
             Parent = Items.CreateBox.Instance,
-            Size = UDim2.new(1, -94, 0, 40),
+            Size = UDim2.new(1, -140, 0, 40),
             Color = "Element",
             Round = 6,
             Clip = true,
@@ -6533,6 +6533,34 @@ local Library = { } do
 
         Items.CreateHit = MakeButton({
             Parent = Items.Create.Instance,
+            Z = 7
+        })
+
+        Items.Import = MakeFrame({
+            Parent = Items.CreateBox.Instance,
+            Anchor = Vector2.new(1, 0),
+            Pos = UDim2.new(1, -90, 0, 0),
+            Size = UDim2.fromOffset(40, 40),
+            Color = "Element",
+            Round = 6,
+            Clip = true,
+            Z = 4
+        })
+
+        HoverSwap(Items.Import)
+
+        MakeImage({
+            Parent = Items.Import.Instance,
+            Icon = "clipboard-paste",
+            Anchor = Vector2.new(0.5, 0.5),
+            Pos = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromOffset(15, 15),
+            Color = "DimIcon",
+            Z = 6
+        })
+
+        Items.ImportHit = MakeButton({
+            Parent = Items.Import.Instance,
             Z = 7
         })
 
@@ -7441,6 +7469,31 @@ local Library = { } do
             RefreshAutoload()
         end
 
+        Items.ImportHit:Connect("MouseButton1Down", function()
+            local Name, Info = Library:ImportConfig(nil, Items.NameInput.Instance.Text)
+
+            if not Name then
+                Library:Notification({
+                    Name = "Could not import",
+                    Description = tostring(Info),
+                    Icon = "triangle-alert"
+                })
+
+                return
+            end
+
+            Items.NameInput.Instance.Text = ""
+            Config.Selected = Name
+            RefreshList()
+            ShowInfo(Name)
+
+            Library:Notification({
+                Name = "Config imported",
+                Description = "\"" .. Name .. "\" came in with " .. Info .. " settings.",
+                Icon = "clipboard-paste"
+            })
+        end)
+
         Items.CreateHit:Connect("MouseButton1Down", function()
             PlaySweep(Items.CreateSweep.Instance)
 
@@ -7717,6 +7770,58 @@ local Library = { } do
         return Watermark
     end
 
+    -- Auto-generated flags.
+    --
+    -- Saving and loading are both keyed on Params.Flag: an element built without
+    -- one never lands in Library.Flags, so GetConfig cannot see it and LoadConfig
+    -- has nothing to call. A script that never passes Flag therefore writes
+    -- configs holding a theme and nothing else, and loading one looks like
+    -- "clicking it does nothing" -- which is exactly what it did.
+    --
+    -- Rather than make every script name every element by hand (and silently
+    -- lose any it forgets), an element with no Flag is given one describing
+    -- where it sits: "Farm/Combat/Auto Abilities/Auto Q". The path is what keeps
+    -- two identically named toggles in different sections apart, and it stays
+    -- the same between runs as long as the names do -- rename a tab or a
+    -- section and the flags under it are new ones, so old configs skip them.
+    local function FlagPath(Self, Name)
+        local Parts = { Name }
+        local Node = Self
+        local Guard = 0
+
+        -- Section -> SubTab -> Tab. Tab has neither field, so the walk ends
+        -- there rather than climbing into the window and looping.
+        while type(Node) == "table" and Guard < 6 do
+            Guard += 1
+
+            local Label = rawget(Node, "Name")
+            if type(Label) == "string" and Label ~= "" then
+                table.insert(Parts, 1, Label)
+            end
+
+            Node = rawget(Node, "SubTab") or rawget(Node, "Tab")
+        end
+
+        return table.concat(Parts, "/")
+    end
+
+    -- Buttons and labels hold no state, so they are left out.
+    for _, Kind in { "Toggle", "Slider", "RangeSlider", "Dropdown", "Textbox",
+                     "Keybind", "Colorpicker" } do
+        local Builder = Library[Kind]
+        if type(Builder) ~= "function" then continue end
+
+        Library[Kind] = function(Self, Params)
+            Params = Params or { }
+
+            if not Params.Flag and type(Params.Name) == "string" then
+                Params.Flag = FlagPath(Self, Params.Name)
+            end
+
+            return Builder(Self, Params)
+        end
+    end
+
     Library.GetConfig = function(Self, Created)
         local Config = { }
 
@@ -7833,6 +7938,72 @@ local Library = { } do
         end
 
         return true
+    end
+
+    -- Bringing a shared config in.
+    --
+    -- The share button has always been able to copy a config out, but nothing
+    -- could read one back, so a config someone sent you could only ever be
+    -- pasted into a text editor. This is the other half.
+    --
+    -- Returns the config name, or nil plus a reason.
+    Library.ImportConfig = function(Self, Text, Name)
+        if not writefile then return nil, "this executor cannot write files" end
+
+        if not Text or Text == "" then
+            local Get = getclipboard or get_clipboard
+                or (getgenv and getgenv().getclipboard)
+
+            if not Get then return nil, "this executor cannot read the clipboard" end
+
+            local Ok, Clip = pcall(Get)
+            if not Ok or type(Clip) ~= "string" or Clip == "" then
+                return nil, "your clipboard is empty"
+            end
+
+            Text = Clip
+        end
+
+        local Ok, Decoded = pcall(function()
+            return HttpService:JSONDecode(Text)
+        end)
+
+        if not Ok or type(Decoded) ~= "table" then
+            return nil, "that is not a config -- copy the whole thing, braces included"
+        end
+
+        -- A config with no settings in it is the old broken kind, and importing
+        -- one would look like a success and then load nothing.
+        local Settings = 0
+        for Key in Decoded do
+            if string.sub(Key, 1, 2) ~= "__" then Settings += 1 end
+        end
+
+        if Settings == 0 then
+            return nil, "that config holds no settings, only a theme"
+        end
+
+        -- Name it after whoever made it when the box was left empty, and count
+        -- up rather than overwrite something you already have.
+        Name = Name and string.gsub(Name, "[^%w _%-]", "") or ""
+
+        if Name == "" then
+            Name = "Imported"
+            if type(Decoded.__creator) == "string" and Decoded.__creator ~= "" then
+                Name = string.gsub(Decoded.__creator, "[^%w _%-]", "")
+            end
+        end
+
+        local Final = Name
+        local N = 2
+
+        while isfile and isfile(Library.ConfigFolder .. "/" .. Final .. ".json") do
+            Final = Name .. " " .. N
+            N += 1
+        end
+
+        writefile(Library.ConfigFolder .. "/" .. Final .. ".json", Text)
+        return Final, Settings
     end
 
     Library.ListConfigs = function(Self)

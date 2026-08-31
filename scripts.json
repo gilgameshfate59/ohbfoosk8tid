@@ -1,64 +1,91 @@
 {
   "hub": {
     "status": "Working / Undetected",
-    "version": "v1.0.0",
-    "updated": "28/08/26"
+    "version": "v1.1.0",
+    "updated": "31/08/26"
   },
   "scripts": [
+    {
+      "name": "Dungeon Quest Reborn",
+      "file": "DungeonQuest.lua",
+      "universe": 9931749389,
+      "places": [
+        77649408247578,
+        85776757589518
+      ],
+      "status": "Working"
+    },
     {
       "name": "Redliner",
       "file": "RLINER.lua",
       "universe": 7265339759,
-      "places": [94987506187454],
+      "places": [
+        94987506187454
+      ],
       "status": "Working"
     },
     {
       "name": "QuickDraw: Legacy",
       "file": "QDL_Aim_Citra.lua",
       "universe": 5371687033,
-      "places": [15561786880],
+      "places": [
+        15561786880
+      ],
       "status": "Working"
     },
     {
       "name": "Practical Basketball",
       "file": "PRACTICALBASKETBALL.lua",
       "universe": 7529591378,
-      "places": [85576197307056],
+      "places": [
+        85576197307056
+      ],
       "status": "Working"
     },
     {
       "name": "Jujutsu: Zero",
       "file": "JJZERO.lua",
       "universe": 6760085372,
-      "places": [128451689942376],
+      "places": [
+        128451689942376
+      ],
       "status": "Working"
     },
     {
       "name": "Dueling Grounds",
       "file": "DUELINGGROUNDS.lua",
       "universe": 9051406594,
-      "places": [94217045453265],
+      "places": [
+        94217045453265
+      ],
       "status": "Working"
     },
     {
       "name": "Azure Latch",
       "file": "AZURELATCH.lua",
       "universe": 6945584306,
-      "places": [94647229517154],
+      "places": [
+        94647229517154
+      ],
       "status": "Working"
     },
     {
       "name": "Steal An Egg",
       "file": "StealEgg.lua",
       "universe": 10563114921,
-      "places": [107778070777162],
+      "places": [
+        107778070777162
+      ],
       "status": "Working"
     },
     {
       "name": "Runaways",
       "file": "Runaways.lua",
       "universe": 7585140258,
-      "places": [118418618261207, 117311404196294],
+      "places": [
+        118418618261207,
+        117311404196294
+      ],
       "status": "Working"
     }
   ]

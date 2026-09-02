@@ -7,6 +7,8 @@ local LOGO = "rbxassetid://95077438762744"
 local DISCORD = "https://discord.gg/yTUe6JNhCx"
 local FOLDER = "Citra"
 local ACCEPT_FILE = FOLDER .. "/terms.txt"
+local AUTOEXEC_FILE = FOLDER .. "/autoexec.txt"
+local PENDING_FILE = FOLDER .. "/autoexec_pending.txt"
 
 local SCRIPT_REPO = "https://raw.githubusercontent.com/gilgameshfate59/ohbfoosk8tid/main/"
 local MANIFEST_URL = SCRIPT_REPO .. "scripts.json"
@@ -182,6 +184,52 @@ local function AcceptTerms()
 	if not hasFiles then return end
 	EnsureFolder()
 	Run(writefile, ACCEPT_FILE, tostring(os.time()))
+end
+
+-- Auto Execute: run this game's script straight away instead of showing the
+-- catalogue. Kept as a file rather than a setting inside a script, because the
+-- decision has to be made before any script has loaded.
+local function AutoExecOn()
+	if not hasFiles or not readfile then return false end
+	if not isfile(AUTOEXEC_FILE) then return false end
+
+	local ok, value = pcall(readfile, AUTOEXEC_FILE)
+	return ok and value == "1"
+end
+
+local function SetAutoExec(on)
+	if not hasFiles then return end
+	EnsureFolder()
+
+	-- Written as "0" rather than deleted when there is no delfile, so the
+	-- reader never has to treat "file exists" as "turned on".
+	if on then
+		Run(writefile, AUTOEXEC_FILE, "1")
+	elseif delfile and isfile(AUTOEXEC_FILE) then
+		Run(delfile, AUTOEXEC_FILE)
+	else
+		Run(writefile, AUTOEXEC_FILE, "0")
+	end
+end
+
+-- A script that freezes the client on load would otherwise re-launch on every
+-- execute, and you would never get a clickable three seconds to turn the mode
+-- off. So a marker is dropped just before launching and cleared once the script
+-- has plainly survived. Finding one still there means the last launch died, and
+-- that one time the catalogue is shown instead.
+local function LaunchDied()
+	return hasFiles and isfile(PENDING_FILE) and true or false
+end
+
+local function MarkLaunch(on)
+	if not hasFiles then return end
+	EnsureFolder()
+
+	if on then
+		Run(writefile, PENDING_FILE, tostring(os.time()))
+	elseif delfile and isfile(PENDING_FILE) then
+		Run(delfile, PENDING_FILE)
+	end
 end
 
 local CATALOGUE = {
@@ -686,7 +734,7 @@ end
 
 local Confirm
 
-function Screens.Catalogue()
+function Screens.Catalogue(note)
 	local pad = 14
 	local here = EntryForPlace()
 
@@ -696,9 +744,77 @@ function Screens.Catalogue()
 		if e ~= here then order[#order + 1] = e end
 	end
 
-	local scroll = New("ScrollingFrame", {
+	-- Auto Execute lives here rather than in the footer: it only means anything
+	-- on this screen, and the footer already hides its own text under 520px.
+	local bar = New("Frame", {
 		Position = UDim2.fromOffset(pad, 10),
-		Size = UDim2.new(1, -pad * 2, 1, -20),
+		Size = UDim2.new(1, -pad * 2, 0, 34),
+		BackgroundColor3 = C.Section,
+		BorderSizePixel = 0,
+		ZIndex = 4,
+	}, Body)
+	Corner(8, bar)
+
+	local barText = Text(bar, {
+		Text = "",
+		Size = 13,
+		Color = C.DimText,
+		Anchor = Vector2.new(0, 0.5),
+		Pos = UDim2.new(0, 12, 0.5, 0),
+		Box = UDim2.new(1, -160, 0, 18),
+		Truncate = true,
+		Z = 5,
+	})
+
+	local barBtn = Button(bar, {
+		Text = "",
+		Anchor = Vector2.new(1, 0.5),
+		Pos = UDim2.new(1, -6, 0.5, 0),
+		Box = UDim2.fromOffset(120, 24),
+		TextSize = 13,
+		Fill = C.Element,
+		Outline = true,
+		Radius = 6,
+		Z = 5,
+	})
+
+	local function PaintBar()
+		local on = AutoExecOn()
+
+		barBtn:SetText(on and "Auto Execute: On" or "Auto Execute: Off")
+		barBtn:SetFill(on and C.Accent or C.Element)
+		barBtn.Label.TextColor3 = on and Color3.new(0, 0, 0) or C.Text
+
+		if note then
+			barText.Text = note
+			barText.TextColor3 = C.Warn
+		elseif not hasFiles then
+			barText.Text = "No file access, so this cannot be remembered."
+			barText.TextColor3 = C.DimText
+		elseif on and not here then
+			barText.Text = "On, but no script here covers this game."
+			barText.TextColor3 = C.Warn
+		elseif on then
+			barText.Text = "Runs " .. here.Name .. " as soon as you execute."
+			barText.TextColor3 = C.DimText
+		else
+			barText.Text = "Skip this menu and run this game's script on execute."
+			barText.TextColor3 = C.DimText
+		end
+	end
+
+	barBtn:SetEnabled(hasFiles)
+	PaintBar()
+
+	barBtn:OnClick(function()
+		SetAutoExec(not AutoExecOn())
+		note = nil
+		PaintBar()
+	end)
+
+	local scroll = New("ScrollingFrame", {
+		Position = UDim2.fromOffset(pad, 52),
+		Size = UDim2.new(1, -pad * 2, 1, -62),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		CanvasSize = UDim2.new(),
@@ -865,6 +981,47 @@ end
 
 local ModalLayer
 
+-- Downloading and compiling, shared by the Run button and Auto Execute so the
+-- rules live in one place. Returns the chunk, or nil plus something to show.
+local function FetchChunk(entry)
+	local ok, body = pcall(game.HttpGet, game, entry.Url)
+
+	if not ok or type(body) ~= "string" or body == "" then
+		return nil, "Could not download the script. GitHub may be down or rate limiting you -- try again in a minute."
+	end
+
+	if #body < 64 then
+		return nil, "The server returned an empty file. The script may have been moved."
+	end
+
+	local chunk, err = loadstring(body)
+	if not chunk then
+		return nil, "The script failed to compile: " .. tostring(err):sub(1, 90)
+	end
+
+	return chunk
+end
+
+-- Tear the loader down and run the script, marking the launch so a load that
+-- kills the client can be detected next time.
+local function RunChunk(chunk)
+	MarkLaunch(true)
+
+	local destroy = getgenv().CitraLoader and getgenv().CitraLoader.Destroy
+	if destroy then pcall(destroy) end
+
+	task.defer(function()
+		local ranOk, runErr = pcall(chunk)
+		if not ranOk then
+			warn("[" .. HUB .. "] script errored: " .. tostring(runErr))
+		end
+
+		-- Still here a few seconds later, so the launch did not take the
+		-- client down with it.
+		task.delay(6, function() MarkLaunch(false) end)
+	end)
+end
+
 function Confirm(entry, sourceButton)
 	if ModalLayer then ModalLayer:Destroy() end
 
@@ -971,31 +1128,10 @@ function Confirm(entry, sourceButton)
 		cancel:SetEnabled(false)
 
 		task.spawn(function()
-			local ok, body = pcall(game.HttpGet, game, entry.Url)
+			local chunk, why = FetchChunk(entry)
 
-			if not ok or type(body) ~= "string" or body == "" then
-				note.Text = "Could not download the script. GitHub may be down or rate limiting you -- try again in a minute."
-				note.TextColor3 = C.Bad
-				go:SetText("Retry")
-				go:SetEnabled(true)
-				cancel:SetEnabled(true)
-				busy = false
-				return
-			end
-
-			if #body < 64 then
-				note.Text = "The server returned an empty file. The script may have been moved."
-				note.TextColor3 = C.Bad
-				go:SetText("Retry")
-				go:SetEnabled(true)
-				cancel:SetEnabled(true)
-				busy = false
-				return
-			end
-
-			local chunk, err = loadstring(body)
 			if not chunk then
-				note.Text = "The script failed to compile: " .. tostring(err):sub(1, 90)
+				note.Text = why
 				note.TextColor3 = C.Bad
 				go:SetText("Retry")
 				go:SetEnabled(true)
@@ -1007,16 +1143,116 @@ function Confirm(entry, sourceButton)
 			go:SetText("Loaded")
 			task.wait(0.25)
 
-			local destroy = getgenv().CitraLoader and getgenv().CitraLoader.Destroy
-			if destroy then pcall(destroy) end
-
-			task.defer(function()
-				local ranOk, runErr = pcall(chunk)
-				if not ranOk then
-					warn("[" .. HUB .. "] script errored: " .. tostring(runErr))
-				end
-			end)
+			RunChunk(chunk)
 		end)
+	end)
+end
+
+-- The countdown that Auto Execute opens on. It runs BEFORE the download, so
+-- the button is a real way out -- cancelling after the script had already been
+-- fetched and run would cancel nothing.
+function Screens.Waiting()
+	Text(Body, {
+		Text = "Checking for updates...",
+		Size = 14,
+		Color = C.DimText,
+		Align = Enum.TextXAlignment.Center,
+		Anchor = Vector2.new(0.5, 0.5),
+		Pos = UDim2.fromScale(0.5, 0.5),
+		Box = UDim2.new(1, -40, 0, 20),
+		Z = 5,
+	})
+end
+
+function Screens.AutoExec(entry)
+	local cancelled = false
+
+	local panel = New("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(320, 168 + (TAP - 32)),
+		BackgroundColor3 = C.Section,
+		BorderSizePixel = 0,
+		ZIndex = 6,
+	}, Body)
+	Corner(12, panel)
+	Stroke(C.Line, 1, panel)
+
+	Text(panel, {
+		Text = "Auto Execute",
+		Size = 12,
+		Color = C.Accent,
+		Bold = true,
+		Align = Enum.TextXAlignment.Center,
+		Pos = UDim2.fromOffset(0, 18),
+		Box = UDim2.new(1, 0, 0, 16),
+		Z = 7,
+	})
+
+	Text(panel, {
+		Text = entry.Name,
+		Size = 18,
+		Color = C.Text,
+		Bold = true,
+		Align = Enum.TextXAlignment.Center,
+		Pos = UDim2.fromOffset(0, 40),
+		Box = UDim2.new(1, 0, 0, 24),
+		Truncate = true,
+		Z = 7,
+	})
+
+	local count = Text(panel, {
+		Text = "Launching in 3",
+		Size = 14,
+		Color = C.DimText,
+		Align = Enum.TextXAlignment.Center,
+		Pos = UDim2.fromOffset(0, 70),
+		Box = UDim2.new(1, 0, 0, 20),
+		Z = 7,
+	})
+
+	local stop = Button(panel, {
+		Text = "Turn Auto Execute off",
+		Anchor = Vector2.new(0.5, 1),
+		Pos = UDim2.new(0.5, 0, 1, -18),
+		Box = UDim2.new(1, -36, 0, TAP),
+		TextSize = 14,
+		Fill = C.Element,
+		Outline = true,
+		Z = 7,
+	})
+
+	stop:OnClick(function()
+		if cancelled then return end
+		cancelled = true
+
+		SetAutoExec(false)
+		Show("Catalogue", "Auto Execute is off. Turn it back on whenever you like.")
+	end)
+
+	task.spawn(function()
+		for left = 3, 1, -1 do
+			if cancelled then return end
+			count.Text = "Launching in " .. left
+			task.wait(1)
+		end
+
+		if cancelled then return end
+
+		count.Text = "Downloading..."
+		stop:SetEnabled(false)
+
+		local chunk, why = FetchChunk(entry)
+		if cancelled then return end
+
+		-- A download that fails is not you asking for the mode to be off, so
+		-- the setting is left alone and the catalogue simply says what broke.
+		if not chunk then
+			Show("Catalogue", why)
+			return
+		end
+
+		RunChunk(chunk)
 	end)
 end
 
@@ -1042,16 +1278,46 @@ TermsBtn:OnClick(function() Show("Terms", true) end)
 
 getgenv().CitraLoader = { Destroy = Destroy, Show = Show }
 
+-- Whether the previous launch came back. Read once, before anything can
+-- overwrite it, and consumed either way so one bad launch costs one skip.
+local LaunchBroke = LaunchDied()
+if LaunchBroke then MarkLaunch(false) end
+
+-- Where the loader settles once the catalogue is known: straight into the
+-- countdown when Auto Execute is on and this game is covered, otherwise the
+-- normal list. It waits for the manifest because the bundled list is a stale
+-- fallback and may not know about the newest script.
+function EnterCatalogue()
+	if not TermsAccepted() then return end
+	if ModalLayer then return end
+
+	local here = EntryForPlace()
+
+	if LaunchBroke and AutoExecOn() then
+		Show("Catalogue", "The last auto launch did not come back, so this one was skipped.")
+		return
+	end
+
+	if AutoExecOn() and here then
+		Show("AutoExec", here)
+		return
+	end
+
+	Show("Catalogue")
+end
+
 local function FetchManifest()
 	local ok, body = pcall(game.HttpGet, game, MANIFEST_URL)
 	if not ok or type(body) ~= "string" or body == "" then
 		HeaderNote.Text = "offline - showing bundled list"
+		EnterCatalogue()
 		return
 	end
 
 	local ok2, data = pcall(function() return HttpService:JSONDecode(body) end)
 	if not ok2 or type(data) ~= "table" then
 		HeaderNote.Text = "catalogue unreadable - showing bundled list"
+		EnterCatalogue()
 		return
 	end
 
@@ -1062,9 +1328,7 @@ local function FetchManifest()
 		HeaderNote.Text = tostring(hub.status or hub.STATUS or "")
 	end
 
-	if not TermsAccepted() then return end
-	if ModalLayer then return end
-	Show("Catalogue")
+	EnterCatalogue()
 end
 
 Backdrop.BackgroundTransparency = 1
@@ -1072,10 +1336,15 @@ Card.Size = UDim2.fromOffset(select(1, Metrics()), select(2, Metrics()))
 
 Tween(Backdrop, { BackgroundTransparency = 0.5 }, 0.25)
 
-if TermsAccepted() then
-	Show("Catalogue")
-else
+-- With Auto Execute armed the catalogue is never the destination, so showing it
+-- first would flash the wrong screen for as long as the manifest takes. A plain
+-- waiting line holds the space instead; EnterCatalogue decides once it lands.
+if not TermsAccepted() then
 	Show("Terms", false)
+elseif AutoExecOn() and not LaunchBroke then
+	Show("Waiting")
+else
+	Show("Catalogue")
 end
 
 task.spawn(FetchManifest)

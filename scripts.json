@@ -2,19 +2,9 @@
   "hub": {
     "status": "Working / Undetected",
     "version": "v1.1.0",
-    "updated": "31/08/26"
+    "updated": "02/09/26"
   },
   "scripts": [
-    {
-      "name": "Dungeon Quest Reborn",
-      "file": "DungeonQuest.lua",
-      "universe": 9931749389,
-      "places": [
-        77649408247578,
-        85776757589518
-      ],
-      "status": "Working"
-    },
     {
       "name": "Redliner",
       "file": "RLINER.lua",

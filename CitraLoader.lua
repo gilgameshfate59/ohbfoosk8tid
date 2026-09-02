@@ -2,7 +2,17 @@ if getgenv().CitraLoader and getgenv().CitraLoader.Destroy then
 	pcall(getgenv().CitraLoader.Destroy)
 end
 
-local HUB = "Citra"
+-- Premium mode.
+--
+-- The premium loader is not a second copy of this file -- keeping two 27KB
+-- loaders in step is how they drift. It is a short file that fills in
+-- getgenv().CitraPremium and then runs this one, so everything below (terms,
+-- auto execute, the catalogue, the countdown) is shared, and only the title,
+-- the extra games and a badge differ.
+local PREMIUM = getgenv().CitraPremium
+if type(PREMIUM) ~= "table" then PREMIUM = nil end
+
+local HUB = PREMIUM and (PREMIUM.Name or "Citra Premium") or "Citra"
 local LOGO = "rbxassetid://95077438762744"
 local DISCORD = "https://discord.gg/yTUe6JNhCx"
 local FOLDER = "Citra"
@@ -318,6 +328,35 @@ local function ApplyCatalogue(list)
 		local e = Normalise(raw)
 		if e then out[#out + 1] = e end
 	end
+
+	-- Premium games sit in front of the free ones, and win outright where
+	-- both cover the same game -- Gakuran is in both lists, and a premium
+	-- holder should get the premium build rather than whichever came first.
+	if PREMIUM then
+		local merged, claimed = {}, {}
+
+		for _, raw in ipairs(PREMIUM.Games or {}) do
+			local e = Normalise(raw)
+			if e then
+				e.Premium = true
+				merged[#merged + 1] = e
+
+				for _, id in ipairs(e.Universes) do claimed[id] = true end
+				for _, id in ipairs(e.Places) do claimed[id] = true end
+			end
+		end
+
+		for _, e in ipairs(out) do
+			local dup = false
+			for _, id in ipairs(e.Universes) do
+				if claimed[id] then dup = true end
+			end
+			if not dup then merged[#merged + 1] = e end
+		end
+
+		out = merged
+	end
+
 	if #out > 0 then CATALOGUE = out end
 end
 
@@ -871,18 +910,46 @@ function Screens.Catalogue(note)
 
 		if isHere then Stroke(C.Accent, 1.5, card) end
 
-		local art = New("ImageLabel", {
+		-- A game icon is square (150x150) and this box is wide, so Crop was
+		-- scaling it to cover the width and clipping the middle out -- nearly
+		-- half of every icon, top and bottom. rbxthumb only offers a 16:9
+		-- GameThumbnail by thumbnail asset id, which a universe id cannot
+		-- give us, so instead the icon is shown WHOLE and centred over a
+		-- dimmed blown-up copy of itself, which fills the sides rather than
+		-- leaving them dead.
+		local art = New("Frame", {
 			Position = UDim2.fromOffset(10, 10),
 			Size = UDim2.new(1, -20, 0, 96),
 			BackgroundColor3 = C.Element,
 			BorderSizePixel = 0,
-			ScaleType = Enum.ScaleType.Crop,
+			ClipsDescendants = true,
 			ZIndex = 6,
-			Image = entry.Universe
-				and ("rbxthumb://type=GameIcon&id=%d&w=150&h=150"):format(entry.Universe)
-				or "",
 		}, card)
 		Corner(8, art)
+
+		local src = entry.Universe
+			and ("rbxthumb://type=GameIcon&id=%d&w=150&h=150"):format(entry.Universe)
+			or ""
+
+		New("ImageLabel", {
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Image = src,
+			ScaleType = Enum.ScaleType.Crop,
+			ImageTransparency = 0.74,
+			ZIndex = 6,
+		}, art)
+
+		local icon = New("ImageLabel", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(86, 86),
+			BackgroundTransparency = 1,
+			Image = src,
+			ScaleType = Enum.ScaleType.Fit,
+			ZIndex = 7,
+		}, art)
+		Corner(6, icon)
 
 		local ph = Text(art, {
 			Text = string.sub(entry.Name, 1, 1),
@@ -890,12 +957,12 @@ function Screens.Catalogue(note)
 			Bold = true,
 			Color = C.Line,
 			Align = Enum.TextXAlignment.Center,
-			Z = 6,
+			Z = 8,
 		})
 
 		task.spawn(function()
 			for _ = 1, 40 do
-				if art.IsLoaded then ph.Visible = false return end
+				if icon.IsLoaded then ph.Visible = false return end
 				task.wait(0.25)
 			end
 		end)
@@ -915,6 +982,26 @@ function Screens.Catalogue(note)
 				Size = 10,
 				Bold = true,
 				Color = Color3.new(1, 1, 1),
+				Align = Enum.TextXAlignment.Center,
+				Z = 9,
+			})
+		end
+
+		-- Opposite corner to THIS GAME so both can show at once.
+		if entry.Premium then
+			local pchip = New("Frame", {
+				Position = UDim2.fromOffset(6, 6),
+				Size = UDim2.fromOffset(66, 18),
+				BackgroundColor3 = C.Warn,
+				BorderSizePixel = 0,
+				ZIndex = 8,
+			}, art)
+			Corner(5, pchip)
+			Text(pchip, {
+				Text = "PREMIUM",
+				Size = 10,
+				Bold = true,
+				Color = Color3.new(0, 0, 0),
 				Align = Enum.TextXAlignment.Center,
 				Z = 9,
 			})
